@@ -3,7 +3,9 @@
     "allow": [
       "Bash(dir:*)",
       "Bash(chmod:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(python verify_phase1.py:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
