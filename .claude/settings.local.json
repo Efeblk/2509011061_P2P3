@@ -6,7 +6,9 @@
       "Bash(git add:*)",
       "Bash(python verify_phase1.py:*)",
       "Bash(git commit:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(python:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []
