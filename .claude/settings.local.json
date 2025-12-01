@@ -5,7 +5,8 @@
       "Bash(chmod:*)",
       "Bash(git add:*)",
       "Bash(python verify_phase1.py:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []
