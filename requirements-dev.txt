@@ -1,0 +1,15 @@
+# Include base requirements
+-r requirements.txt
+
+# Development Tools
+ipython>=8.18.1
+jupyter>=1.0.0
+notebook>=7.0.6
+
+# Debugging
+ipdb>=0.13.13
+pdbpp>=0.10.3
+
+# Documentation
+sphinx>=7.2.6
+sphinx-rtd-theme>=2.0.0

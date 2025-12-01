@@ -1,0 +1,3 @@
+"""
+EventGraph test suite.
+"""
