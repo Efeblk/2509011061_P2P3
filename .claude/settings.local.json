@@ -8,7 +8,18 @@
       "Bash(git commit:*)",
       "Bash(tree:*)",
       "Bash(python:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(test:*)",
+      "Bash(docker compose:*)",
+      "Bash(python3:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(scrapy crawl:*)",
+      "Bash(make view:*)",
+      "Bash(timeout 60 scrapy crawl:*)",
+      "Bash(timeout 90 scrapy crawl:*)"
     ],
     "deny": [],
     "ask": []

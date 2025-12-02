@@ -58,7 +58,7 @@ EventGraph/
 - Docker and Docker Compose
 - Git
 
-### Installation
+### Installation (One-Time Setup)
 
 1. **Clone the repository**
    ```bash
@@ -74,6 +74,8 @@ EventGraph/
 
 3. **Install dependencies**
    ```bash
+   make install
+   # OR manually:
    pip install -r requirements.txt
    playwright install
    ```
@@ -81,32 +83,50 @@ EventGraph/
 4. **Configure environment**
    ```bash
    cp .env.example .env
-   # Edit .env with your API keys
+   # Edit .env with your API keys (optional for scraping)
    ```
 
-5. **Start FalkorDB**
-   ```bash
-   docker-compose up -d
-   ```
+### Daily Usage
 
-6. **Run the application**
-   ```bash
-   python src/main.py
-   ```
+```bash
+# 1. Activate virtual environment
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# 2. Start the system
+make up
+
+# 3. Scrape events
+make scrape
+
+# 4. View results
+make view
+
+# 5. Stop when done
+make down
+```
 
 ## Usage
 
-### Scraping Events
+### Quick Commands
+
+```bash
+make up        # Start everything (Docker + initialize DB)
+make scrape    # Scrape events from Biletix
+make view      # View scraped events in terminal
+make down      # Stop everything
+make help      # See all available commands
+```
+
+📚 For complete command reference, see [COMMANDS.md](COMMANDS.md)
+
+### Manual Scraping
 
 ```bash
 # Scrape from Biletix
 scrapy crawl biletix
-
-# Scrape from Biletino
-scrapy crawl biletino
 ```
 
-### Querying Events
+### Querying Events (Python)
 
 ```python
 from src.models.event import EventNode
@@ -114,11 +134,11 @@ from src.models.event import EventNode
 # Find all events
 events = EventNode.find_all()
 
-# Find events by venue
-events = EventNode.find_by_venue("Zorlu PSM")
+# Find events by source
+events = EventNode.find_by_source("biletix")
 
-# Find top-rated events
-events = EventNode.find_by_ai_score(min_score=90)
+# Find events by category
+events = EventNode.find_by_category("Tiyatro")
 ```
 
 ## Architecture
