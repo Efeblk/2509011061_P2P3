@@ -16,7 +16,8 @@ class BiletixSpider(BaseEventSpider):
     allowed_domains = ["biletix.com"]
 
     # Updated URL that works - Istanbul events for next 14 days
-    start_urls = ["https://www.biletix.com/search/TURKIYE/tr?category_sb=-1&date_sb=next14days&city_sb=İstanbul"]
+    # Using the exact URL from the browser with hash fragment for proper JS filtering
+    start_urls = ["https://www.biletix.com/search/TURKIYE/tr?category_sb=-1&date_sb=next14days&city_sb=%C4%B0stanbul#!city_sb:%C4%B0stanbul,date_sb:next14days"]
 
     custom_settings = {
         **BaseEventSpider.custom_settings,
@@ -56,15 +57,55 @@ class BiletixSpider(BaseEventSpider):
             except Exception as e:
                 self.logger.warning(f"Selector not found, continuing anyway: {e}")
 
-            # Extract page content and save for debugging
+            # Click "Daha Fazla Göster" (Show More) button until all events loaded
+            max_clicks = 20  # Safety limit to prevent infinite loop
+            clicks_performed = 0
+
+            for click_num in range(1, max_clicks + 1):
+                try:
+                    # Look for "Show More" button
+                    show_more_btn = await page.query_selector('a.search_load_more')
+
+                    if not show_more_btn:
+                        self.logger.info(f"✓ No more 'Show More' button - all events loaded ({clicks_performed} clicks)")
+                        break
+
+                    # Check if visible
+                    is_visible = await show_more_btn.is_visible()
+                    if not is_visible:
+                        self.logger.info(f"✓ 'Show More' button hidden - all events loaded ({clicks_performed} clicks)")
+                        break
+
+                    # Click and wait for new events to load
+                    events_before = len(await page.query_selector_all('div.listevent.searchResultEvent'))
+                    await show_more_btn.click()
+                    await asyncio.sleep(2)  # Wait for events to load
+
+                    events_after = len(await page.query_selector_all('div.listevent.searchResultEvent'))
+                    new_events = events_after - events_before
+                    clicks_performed += 1
+
+                    self.logger.info(f"📄 Click {click_num}: +{new_events} events ({events_before} → {events_after} total)")
+
+                    if new_events == 0:
+                        self.logger.info("✓ No new events loaded - stopping")
+                        break
+
+                except Exception as e:
+                    self.logger.warning(f"Error clicking 'Show More': {e}")
+                    break
+
+            if clicks_performed > 0:
+                self.logger.info(f"✅ Loaded all events with {clicks_performed} clicks")
+
+            # Extract page content after loading all events
             content = await page.content()
 
             # Save to file for debugging
             with open("scrapy_page_content.html", "w", encoding="utf-8") as f:
                 f.write(content)
 
-            self.logger.info(f"Page content length: {len(content)} chars")
-            self.logger.info(f"✓ Saved page content to scrapy_page_content.html")
+            self.logger.info(f"Page content: {len(content)} chars")
 
             # Replace response body
             from scrapy.http import HtmlResponse
@@ -80,13 +121,18 @@ class BiletixSpider(BaseEventSpider):
         # Filter to actual event containers (not mobile status elements)
         events = response.css('div.listevent.searchResultEvent')
 
-        self.logger.info(f"Found {len(events)} actual event elements")
+        total_on_page = len(events)
+        self.logger.info(f"📊 Found {total_on_page} event elements on page")
 
-        for event in events[:20]:  # Limit to first 20 events
+        events_yielded = 0
+        events_skipped = 0
+
+        for idx, event in enumerate(events, 1):
             try:
                 # Extract data using multiple possible selectors
                 title = self.extract_title(event)
                 venue = self.extract_venue(event)
+                city = self.extract_city(event)
                 date = self.extract_date(event)
                 price = self.extract_price_from_element(event)
                 url = self.extract_url(event, response)
@@ -96,21 +142,39 @@ class BiletixSpider(BaseEventSpider):
                     event_item = EventItem(
                         title=self.clean_text(title),
                         venue=self.clean_text(venue) if venue else None,
+                        city=self.clean_text(city) if city else None,
                         date=date,
                         price=price,
                         url=url,
                         image_url=image_url,
-                        city="İstanbul",  # Default for Biletix
                         category="Tiyatro",  # We're scraping theater section
                         source="biletix",
                     )
 
                     self.log_event(event_item)
+                    events_yielded += 1
                     yield event_item
+                else:
+                    events_skipped += 1
+                    self.logger.debug(f"Event #{idx} skipped: no title found")
 
             except Exception as e:
-                self.logger.error(f"Error parsing event: {e}")
+                events_skipped += 1
+                self.logger.error(f"Error parsing event #{idx}: {e}")
                 continue
+
+        # Verification: Check if we processed all events
+        processed_total = events_yielded + events_skipped
+
+        self.logger.info(f"✓ Processed {processed_total}/{total_on_page} events: {events_yielded} yielded, {events_skipped} skipped")
+
+        # Alert if there's a mismatch
+        if processed_total != total_on_page:
+            self.logger.warning(f"⚠️  MISMATCH: Processed {processed_total} but found {total_on_page} on page!")
+        elif events_skipped > 0:
+            self.logger.info(f"✅ All {total_on_page} events processed ({events_skipped} skipped due to missing data)")
+        else:
+            self.logger.info(f"✅ All {total_on_page} events successfully processed!")
 
     def extract_title(self, element):
         """Extract event title from element."""
@@ -154,6 +218,16 @@ class BiletixSpider(BaseEventSpider):
         venue_spans = element.css(".searchResultInfo3 span.ln1::text").getall()
         if len(venue_spans) > 1:
             return venue_spans[1].strip() if venue_spans[1] else None
+
+        return None
+
+    def extract_city(self, element):
+        """Extract city name from element."""
+        # City is in <span class="ln2 searchResultCity">
+        # Note: Don't use just "span.ln2" as fallback - it catches "Satışta" (On Sale) text
+        city = element.css("span.searchResultCity::text").get()
+        if city and city.strip():
+            return city.strip()
 
         return None
 

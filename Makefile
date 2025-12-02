@@ -142,4 +142,4 @@ scrape:
 view:
 	@echo "📊 Events in database:"
 	@echo ""
-	@$(PYTHON) -c "import redis; from falkordb import FalkorDB; db = FalkorDB(host='localhost', port=6379); g = db.select_graph('eventgraph'); r = g.query('MATCH (e:Event) RETURN e.title, e.venue, e.price, e.date, e.source ORDER BY e.title LIMIT 50'); print(f'\nTotal: {len(r.result_set)} events\n'); [print(f'{i+1}. {row[0]}\n   Venue: {row[1]}\n   Price: {row[2] or \"N/A\"} TL\n   Date: {row[3]}\n   Source: {row[4]}\n') for i, row in enumerate(r.result_set)]"
+	@$(PYTHON) -c "import redis; from falkordb import FalkorDB; db = FalkorDB(host='localhost', port=6379); g = db.select_graph('eventgraph'); count_r = g.query('MATCH (e:Event) RETURN count(e) as count'); total = count_r.result_set[0][0]; r = g.query('MATCH (e:Event) RETURN e.title, e.venue, e.city, e.price, e.date, e.source ORDER BY e.city, e.title'); print(f'\nTotal: {total} events\n'); [print(f'{i+1}. {row[0]}\n   📍 City: {row[2] or \"Unknown\"}\n   🏛️  Venue: {row[1]}\n   💰 Price: {row[3] or \"N/A\"} TL\n   📅 Date: {row[4]}\n   🔗 Source: {row[5]}\n') for i, row in enumerate(r.result_set)]"

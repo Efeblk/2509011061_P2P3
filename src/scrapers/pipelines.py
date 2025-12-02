@@ -44,26 +44,32 @@ class ValidationPipeline:
 class DuplicatesPipeline:
     """
     Pipeline for detecting and handling duplicate events.
+    Uses title + venue as unique key since same event can occur at different venues.
     """
 
     def __init__(self):
-        self.seen_titles = set()
+        self.seen_events = set()  # Store (title, venue) tuples
 
     def process_item(self, item, spider):
-        """Check for duplicate events."""
+        """Check for duplicate events based on title + venue."""
         title = item.get("title")
+        venue = item.get("venue", "")  # Empty string if no venue
 
-        if title in self.seen_titles:
-            logger.info(f"Duplicate found: {title}")
-            raise DropItem(f"Duplicate event: {title}")
+        # Create unique key from title and venue
+        event_key = (title, venue)
 
-        self.seen_titles.add(title)
+        # Check in-memory duplicates in current scraping session
+        if event_key in self.seen_events:
+            logger.info(f"Duplicate found: {title} @ {venue}")
+            raise DropItem(f"Duplicate event: {title} @ {venue}")
 
-        # Also check database for existing event
-        existing = EventNode.find_by_title(title)
+        self.seen_events.add(event_key)
+
+        # Also check database for existing event with same title AND venue
+        existing = EventNode.find_by_title_and_venue(title, venue)
         if existing:
-            logger.info(f"Event already in database: {title}")
-            raise DropItem(f"Event exists in database: {title}")
+            logger.info(f"Event already in database: {title} @ {venue}")
+            raise DropItem(f"Event exists in database: {title} @ {venue}")
 
         return item
 

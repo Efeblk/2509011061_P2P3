@@ -20,7 +20,13 @@
       "Bash(make view:*)",
       "Bash(timeout 60 scrapy crawl:*)",
       "Bash(timeout 90 scrapy crawl:*)",
-      "Bash(make help:*)"
+      "Bash(make help:*)",
+      "Bash(bash -c \"source venv/bin/activate && scrapy crawl biletix 2>&1\")",
+      "Bash(make scrape:*)",
+      "Bash(make up:*)",
+      "Bash(playwright install:*)",
+      "Bash(tee:*)",
+      "Bash(make clean:*)"
     ],
     "deny": [],
     "ask": []
