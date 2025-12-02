@@ -19,7 +19,8 @@
       "Bash(scrapy crawl:*)",
       "Bash(make view:*)",
       "Bash(timeout 60 scrapy crawl:*)",
-      "Bash(timeout 90 scrapy crawl:*)"
+      "Bash(timeout 90 scrapy crawl:*)",
+      "Bash(make help:*)"
     ],
     "deny": [],
     "ask": []
