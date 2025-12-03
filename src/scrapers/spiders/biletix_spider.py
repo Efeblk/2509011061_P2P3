@@ -242,13 +242,17 @@ class BiletixSpider(BaseEventSpider):
         for date_text in date_spans:
             if date_text and "," in date_text and "/" in date_text:
                 # Found date like "Sal, 02/12/25"
-                return date_text.strip()
+                # Clean up trailing dash artifact
+                cleaned = date_text.strip().rstrip(" -")
+                return cleaned
 
         # Alternative: just look for any span with date format
         all_text = element.css("span.ln1::text").getall()
         for text in all_text:
             if text and "/" in text:
-                return text.strip()
+                # Clean up trailing dash artifact
+                cleaned = text.strip().rstrip(" -")
+                return cleaned
 
         return None
 
