@@ -31,7 +31,13 @@
       "Bash(make install:*)",
       "Bash(if [ -f biletinial_page_content.html ])",
       "Bash(then grep -o \"class=\"\"sehir-detay__liste-mobiltarih\"\"[^>]*>[^<]*<span[^>]*>[^<]*</span>[^<]*<span[^>]*>[^<]*</span>[^<]*<span[^>]*>[^<]*</span>\" biletinial_page_content.html)",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(pytest:*)",
+      "Bash(git reset:*)",
+      "Bash(git push:*)",
+      "Bash(gh run:*)",
+      "Bash(black:*)",
+      "Bash(flake8:*)"
     ],
     "deny": [],
     "ask": []
