@@ -107,6 +107,29 @@ class EventNode(Node):
             return None
 
     @classmethod
+    def find_by_title_venue_and_date(cls, title: str, venue: str, date: str) -> Optional["EventNode"]:
+        """Find an event by its title, venue, and date (unique combination for multi-date events)."""
+        from src.database.connection import db_connection
+
+        try:
+            query = """
+                MATCH (e:Event {title: $title, venue: $venue, date: $date})
+                RETURN e
+                LIMIT 1
+            """
+            result = db_connection.execute_query(query, {"title": title, "venue": venue, "date": date})
+
+            if result.result_set:
+                node_data = result.result_set[0][0].properties
+                return cls.from_dict(node_data)
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to find event by title, venue, and date: {e}")
+            return None
+
+    @classmethod
     def find_by_source(cls, source: str, limit: Optional[int] = None) -> List["EventNode"]:
         """Find events by their source (e.g., 'biletix')."""
         from src.database.connection import db_connection

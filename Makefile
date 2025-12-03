@@ -10,13 +10,15 @@ help:
 	@echo "EventGraph - Event Discovery Scraper"
 	@echo ""
 	@echo "🚀 Commands:"
-	@echo "  make up        - Start database and initialize"
-	@echo "  make down      - Stop database"
-	@echo "  make scrape    - Scrape events from Biletix"
-	@echo "  make view      - View scraped events"
-	@echo "  make db-shell  - Open database CLI (Cypher queries)"
-	@echo "  make clean     - Clean cache files"
-	@echo "  make fclean    - Full clean (removes venv, database, cache)"
+	@echo "  make up           - Start database and initialize"
+	@echo "  make down         - Stop database"
+	@echo "  make scrape       - Scrape events from all sources (Biletix + Biletinial)"
+	@echo "  make scrape-biletix    - Scrape events from Biletix only"
+	@echo "  make scrape-biletinial - Scrape events from Biletinial only"
+	@echo "  make view         - View scraped events"
+	@echo "  make db-shell     - Open database CLI (Cypher queries)"
+	@echo "  make clean        - Clean cache files"
+	@echo "  make fclean       - Full clean (removes venv, database, cache)"
 	@echo ""
 	@echo "📦 Setup:"
 	@echo "  make install   - Install dependencies"
@@ -121,9 +123,11 @@ up:
 	@echo "✅ EventGraph is ready!"
 	@echo ""
 	@echo "Next steps:"
-	@echo "  make scrape    - Scrape events from Biletix"
-	@echo "  make view      - View scraped events"
-	@echo "  make down      - Stop everything"
+	@echo "  make scrape              - Scrape from all sources"
+	@echo "  make scrape-biletix      - Scrape from Biletix"
+	@echo "  make scrape-biletinial   - Scrape from Biletinial"
+	@echo "  make view                - View scraped events"
+	@echo "  make down                - Stop everything"
 
 down:
 	@echo "🛑 Stopping EventGraph..."
@@ -131,15 +135,37 @@ down:
 	@echo "✅ All services stopped"
 
 scrape:
+	@echo "🕷️  Starting scrapers for all sources..."
+	@echo ""
+	@echo "📍 Scraping Biletix..."
+	scrapy crawl biletix
+	@echo ""
+	@echo "📍 Scraping Biletinial..."
+	scrapy crawl biletinial
+	@echo ""
+	@echo "✅ All scraping complete!"
+	@echo ""
+	@echo "View results with: make view"
+
+scrape-biletix:
 	@echo "🕷️  Starting Biletix scraper..."
 	@echo ""
 	scrapy crawl biletix
 	@echo ""
-	@echo "✅ Scraping complete!"
+	@echo "✅ Biletix scraping complete!"
+	@echo ""
+	@echo "View results with: make view"
+
+scrape-biletinial:
+	@echo "🕷️  Starting Biletinial scraper..."
+	@echo ""
+	scrapy crawl biletinial
+	@echo ""
+	@echo "✅ Biletinial scraping complete!"
 	@echo ""
 	@echo "View results with: make view"
 
 view:
 	@echo "📊 Events in database:"
 	@echo ""
-	@$(PYTHON) -c "import redis; from falkordb import FalkorDB; db = FalkorDB(host='localhost', port=6379); g = db.select_graph('eventgraph'); count_r = g.query('MATCH (e:Event) RETURN count(e) as count'); total = count_r.result_set[0][0]; r = g.query('MATCH (e:Event) RETURN e.title, e.venue, e.city, e.price, e.date, e.source ORDER BY e.city, e.title'); print(f'\nTotal: {total} events\n'); [print(f'{i+1}. {row[0]}\n   📍 City: {row[2] or \"Unknown\"}\n   🏛️  Venue: {row[1]}\n   💰 Price: {row[3] or \"N/A\"} TL\n   📅 Date: {row[4]}\n   🔗 Source: {row[5]}\n') for i, row in enumerate(r.result_set)]"
+	@bash -c "source venv/bin/activate && python -c \"from falkordb import FalkorDB; db = FalkorDB(host='localhost', port=6379); g = db.select_graph('eventgraph'); count_r = g.query('MATCH (e:Event) RETURN count(e) as count'); total = count_r.result_set[0][0]; r = g.query('MATCH (e:Event) RETURN e.title, e.venue, e.city, e.price, e.date, e.source ORDER BY e.city, e.title'); print(f'\\nTotal: {total} events\\n'); [print(f'{i+1}. {row[0]}\\n   📍 City: {row[2] or \\\"Unknown\\\"}\\n   🏛️  Venue: {row[1]}\\n   💰 Price: {row[3] or \\\"N/A\\\"} TL\\n   📅 Date: {row[4]}\\n   🔗 Source: {row[5]}\\n') for i, row in enumerate(r.result_set)]\""

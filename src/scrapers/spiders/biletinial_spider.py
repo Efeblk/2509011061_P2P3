@@ -18,7 +18,7 @@ class BiletinialSpider(BaseEventSpider):
 
     # Istanbul events - multiple categories
     start_urls = [
-        "https://biletinial.com/tr-tr/sehrineozel/istanbul",  # City-specific page
+        #"https://biletinial.com/tr-tr/sehrineozel/istanbul",  # City-specific page SKIP THIS FOR NOW
         "https://biletinial.com/tr-tr/muzik/istanbul",  # Music events in Istanbul
         "https://biletinial.com/tr-tr/tiyatro/istanbul",  # Theater events in Istanbul
     ]
@@ -93,18 +93,24 @@ class BiletinialSpider(BaseEventSpider):
                 self.logger.info("✓ Event list loaded (city-specific layout)")
             except Exception:
                 try:
-                    # Try category page layout with resultsGrid (concerts, etc.)
-                    await page.wait_for_selector(".resultsGrid", timeout=5000)
-                    event_list_selector = ".resultsGrid > a"
-                    self.logger.info("✓ Event list loaded (resultsGrid layout)")
+                    # Try category page layout (music, theater) - kategori__etkinlikler
+                    await page.wait_for_selector("#kategori__etkinlikler ul", timeout=5000)
+                    event_list_selector = "#kategori__etkinlikler ul li"
+                    self.logger.info("✓ Event list loaded (kategori__etkinlikler layout)")
                 except Exception:
                     try:
-                        # Try older category layout
-                        await page.wait_for_selector("ul.yeniArama__sonuc__data", timeout=5000)
-                        event_list_selector = "ul.yeniArama__sonuc__data li"
-                        self.logger.info("✓ Event list loaded (yeniArama layout)")
-                    except Exception as e:
-                        self.logger.warning(f"No event list found: {e}")
+                        # Try category page layout with resultsGrid (concerts, etc.)
+                        await page.wait_for_selector(".resultsGrid", timeout=5000)
+                        event_list_selector = ".resultsGrid > a"
+                        self.logger.info("✓ Event list loaded (resultsGrid layout)")
+                    except Exception:
+                        try:
+                            # Try older category layout
+                            await page.wait_for_selector("ul.yeniArama__sonuc__data", timeout=5000)
+                            event_list_selector = "ul.yeniArama__sonuc__data li"
+                            self.logger.info("✓ Event list loaded (yeniArama layout)")
+                        except Exception as e:
+                            self.logger.warning(f"No event list found: {e}")
 
             # Skip further processing if no event list found
             if not event_list_selector:
@@ -242,6 +248,11 @@ class BiletinialSpider(BaseEventSpider):
         if title and title.strip():
             return title.strip()
 
+        # Try kategori__etkinlikler layout: h3 > a
+        title = element.css("h3 a::text").get()
+        if title and title.strip():
+            return title.strip()
+
         # Try concert/category layout: figcaption > span
         title = element.css("figcaption > span::text").get()
         if title and title.strip():
@@ -256,6 +267,11 @@ class BiletinialSpider(BaseEventSpider):
         if venue:
             venue_text = " ".join([v.strip() for v in venue if v.strip()])
             return venue_text
+
+        # Try kategori__etkinlikler layout: address
+        venue = element.css("address::text").get()
+        if venue and venue.strip():
+            return venue.strip()
 
         # Try concert/category layout: p.loca
         venue = element.css("p.loca::text").get()
@@ -272,18 +288,43 @@ class BiletinialSpider(BaseEventSpider):
 
     def extract_date(self, element):
         """Extract event date from element."""
-        # Date is in mobile date display: day, month, time
-        date_parts = element.css("div.sehir-detay__liste-mobiltarih span::text").getall()
-        if date_parts:
-            # Combine parts: day + month + time
-            date_str = " ".join([part.strip() for part in date_parts if part.strip()])
-            return date_str
+        # Date is in mobile date display with different HTML tags:
+        # <span>03</span> <b>Aralık</b> <p>19:30</p>
+
+        # Try city-specific layout first
+        day = element.css("div.sehir-detay__liste-mobiltarih span::text").get()
+        month = element.css("div.sehir-detay__liste-mobiltarih b::text").get()
+        time = element.css("div.sehir-detay__liste-mobiltarih p::text").get()
+
+        if day or month or time:
+            # Combine available parts
+            parts = [p.strip() for p in [day, month, time] if p and p.strip()]
+            return " ".join(parts) if parts else None
+
+        # Try kategori__etkinlikler layout: span after address
+        # Date format: "Aralık - 03 - 07" with <br> separating multiple dates
+        date_span = element.css("address ~ span::text").getall()
+        if date_span:
+            # Join all date parts and clean up whitespace
+            date_text = " ".join([d.strip() for d in date_span if d.strip()])
+            return date_text if date_text else None
+
+        # Try concert/category layout (if different structure exists)
+        date_text = element.css("figcaption time::text").get()
+        if date_text and date_text.strip():
+            return date_text.strip()
+
         return None
 
     def extract_url(self, element, response):
         """Extract event URL from element."""
         # Try city-specific layout: h2 > a href
         url = element.css("h2 a::attr(href)").get()
+        if url:
+            return response.urljoin(url)
+
+        # Try kategori__etkinlikler layout: h3 > a href
+        url = element.css("h3 a::attr(href)").get()
         if url:
             return response.urljoin(url)
 

@@ -64,3 +64,8 @@ Thumbs.db
 scraped_data/
 temp/
 cache/
+*.html
+biletinial_page_content.html
+scrapy_page_content.html
+coverage.xml
+dump.rdb

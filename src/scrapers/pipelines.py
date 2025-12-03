@@ -44,32 +44,34 @@ class ValidationPipeline:
 class DuplicatesPipeline:
     """
     Pipeline for detecting and handling duplicate events.
-    Uses title + venue as unique key since same event can occur at different venues.
+    Uses title + venue + date as unique key to handle events with multiple dates.
     """
 
     def __init__(self):
-        self.seen_events = set()  # Store (title, venue) tuples
+        self.seen_events = set()  # Store (title, venue, date) tuples
 
     def process_item(self, item, spider):
-        """Check for duplicate events based on title + venue."""
+        """Check for duplicate events based on title + venue + date."""
         title = item.get("title")
-        venue = item.get("venue", "")  # Empty string if no venue
+        # Normalize venue and date to empty string if None (match database storage)
+        venue = item.get("venue") or ""
+        date = item.get("date") or ""
 
-        # Create unique key from title and venue
-        event_key = (title, venue)
+        # Create unique key from title, venue, and date
+        event_key = (title, venue, date)
 
         # Check in-memory duplicates in current scraping session
         if event_key in self.seen_events:
-            logger.info(f"Duplicate found: {title} @ {venue}")
-            raise DropItem(f"Duplicate event: {title} @ {venue}")
+            logger.info(f"Duplicate found in session: {title} @ {venue} on {date}")
+            raise DropItem(f"Duplicate event: {title} @ {venue} on {date}")
 
         self.seen_events.add(event_key)
 
-        # Also check database for existing event with same title AND venue
-        existing = EventNode.find_by_title_and_venue(title, venue)
+        # Also check database for existing event with same title, venue, AND date
+        existing = EventNode.find_by_title_venue_and_date(title, venue, date)
         if existing:
-            logger.info(f"Event already in database: {title} @ {venue}")
-            raise DropItem(f"Event exists in database: {title} @ {venue}")
+            logger.info(f"Duplicate found in database: {title} @ {venue} on {date}")
+            raise DropItem(f"Event exists in database: {title} @ {venue} on {date}")
 
         return item
 
