@@ -17,9 +17,9 @@ from src.database.connection import db_connection
 
 def initialize_app():
     """Initialize the application."""
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info("EventGraph - AI Powered Event Discovery")
-    logger.info("="*60)
+    logger.info("=" * 60)
     logger.info(f"Environment: {settings.app.environment}")
     logger.info(f"Log Level: {settings.app.log_level}")
 
@@ -47,9 +47,9 @@ def main():
     try:
         initialize_app()
 
-        logger.info("\n" + "="*60)
+        logger.info("\n" + "=" * 60)
         logger.info("Application initialized successfully!")
-        logger.info("="*60)
+        logger.info("=" * 60)
         logger.info("\nNext steps:")
         logger.info("1. Configure your .env file with API keys")
         logger.info("2. Run scrapers: scrapy crawl biletix")

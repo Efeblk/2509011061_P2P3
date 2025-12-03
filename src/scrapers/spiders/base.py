@@ -60,6 +60,7 @@ class BaseEventSpider(scrapy.Spider, ABC):
 
         # Extract first number
         import re
+
         match = re.search(r"(\d+(?:\.\d+)?)", price_text)
         if match:
             return float(match.group(1))

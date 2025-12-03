@@ -17,7 +17,9 @@ class BiletixSpider(BaseEventSpider):
 
     # Updated URL that works - Istanbul events for next 14 days
     # Using the exact URL from the browser with hash fragment for proper JS filtering
-    start_urls = ["https://www.biletix.com/search/TURKIYE/tr?category_sb=-1&date_sb=next14days&city_sb=%C4%B0stanbul#!city_sb:%C4%B0stanbul,date_sb:next14days"]
+    start_urls = [
+        "https://www.biletix.com/search/TURKIYE/tr?category_sb=-1&date_sb=next14days&city_sb=%C4%B0stanbul#!city_sb:%C4%B0stanbul,date_sb:next14days"
+    ]
 
     custom_settings = {
         **BaseEventSpider.custom_settings,
@@ -64,10 +66,12 @@ class BiletixSpider(BaseEventSpider):
             for click_num in range(1, max_clicks + 1):
                 try:
                     # Look for "Show More" button
-                    show_more_btn = await page.query_selector('a.search_load_more')
+                    show_more_btn = await page.query_selector("a.search_load_more")
 
                     if not show_more_btn:
-                        self.logger.info(f"✓ No more 'Show More' button - all events loaded ({clicks_performed} clicks)")
+                        self.logger.info(
+                            f"✓ No more 'Show More' button - all events loaded ({clicks_performed} clicks)"
+                        )
                         break
 
                     # Check if visible
@@ -77,15 +81,17 @@ class BiletixSpider(BaseEventSpider):
                         break
 
                     # Click and wait for new events to load
-                    events_before = len(await page.query_selector_all('div.listevent.searchResultEvent'))
+                    events_before = len(await page.query_selector_all("div.listevent.searchResultEvent"))
                     await show_more_btn.click()
                     await asyncio.sleep(2)  # Wait for events to load
 
-                    events_after = len(await page.query_selector_all('div.listevent.searchResultEvent'))
+                    events_after = len(await page.query_selector_all("div.listevent.searchResultEvent"))
                     new_events = events_after - events_before
                     clicks_performed += 1
 
-                    self.logger.info(f"📄 Click {click_num}: +{new_events} events ({events_before} → {events_after} total)")
+                    self.logger.info(
+                        f"📄 Click {click_num}: +{new_events} events ({events_before} → {events_after} total)"
+                    )
 
                     if new_events == 0:
                         self.logger.info("✓ No new events loaded - stopping")
@@ -109,7 +115,8 @@ class BiletixSpider(BaseEventSpider):
 
             # Replace response body
             from scrapy.http import HtmlResponse
-            response = HtmlResponse(url=response.url, body=content, encoding='utf-8')
+
+            response = HtmlResponse(url=response.url, body=content, encoding="utf-8")
 
         except Exception as e:
             self.logger.error(f"Critical error in parse: {e}")
@@ -119,7 +126,7 @@ class BiletixSpider(BaseEventSpider):
 
         # Parse events from the page using correct selector
         # Filter to actual event containers (not mobile status elements)
-        events = response.css('div.listevent.searchResultEvent')
+        events = response.css("div.listevent.searchResultEvent")
 
         total_on_page = len(events)
         self.logger.info(f"📊 Found {total_on_page} event elements on page")
@@ -166,7 +173,9 @@ class BiletixSpider(BaseEventSpider):
         # Verification: Check if we processed all events
         processed_total = events_yielded + events_skipped
 
-        self.logger.info(f"✓ Processed {processed_total}/{total_on_page} events: {events_yielded} yielded, {events_skipped} skipped")
+        self.logger.info(
+            f"✓ Processed {processed_total}/{total_on_page} events: {events_yielded} yielded, {events_skipped} skipped"
+        )
 
         # Alert if there's a mismatch
         if processed_total != total_on_page:
@@ -291,6 +300,7 @@ class BiletixSpider(BaseEventSpider):
             if img:
                 if "url(" in img:  # Handle background-image
                     import re
+
                     match = re.search(r'url\(["\']?([^"\']+)["\']?\)', img)
                     if match:
                         return match.group(1)

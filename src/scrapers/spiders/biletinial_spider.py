@@ -18,7 +18,7 @@ class BiletinialSpider(BaseEventSpider):
 
     # Istanbul events - multiple categories
     start_urls = [
-        #"https://biletinial.com/tr-tr/sehrineozel/istanbul",  # City-specific page SKIP THIS FOR NOW
+        # "https://biletinial.com/tr-tr/sehrineozel/istanbul",  # City-specific page SKIP THIS FOR NOW
         "https://biletinial.com/tr-tr/muzik/istanbul",  # Music events in Istanbul
         "https://biletinial.com/tr-tr/tiyatro/istanbul",  # Theater events in Istanbul
     ]
@@ -133,7 +133,9 @@ class BiletinialSpider(BaseEventSpider):
 
                     # Look for the load more button
                     # Common selectors for "Load More" buttons on Turkish sites
-                    load_more_button = page.locator("button:has-text('Daha Fazla'), button:has-text('daha fazla'), a:has-text('Daha Fazla'), a:has-text('daha fazla')").first
+                    load_more_button = page.locator(
+                        "button:has-text('Daha Fazla'), button:has-text('daha fazla'), a:has-text('Daha Fazla'), a:has-text('daha fazla')"
+                    ).first
 
                     # Check if button is visible
                     is_visible = await load_more_button.is_visible(timeout=2000)
@@ -228,13 +230,17 @@ class BiletinialSpider(BaseEventSpider):
             # Verification: Check if we processed all events
             processed_total = events_yielded + events_skipped
 
-            self.logger.info(f"✓ Processed {processed_total}/{total_on_page} events: {events_yielded} yielded, {events_skipped} skipped")
+            self.logger.info(
+                f"✓ Processed {processed_total}/{total_on_page} events: {events_yielded} yielded, {events_skipped} skipped"
+            )
 
             # Alert if there's a mismatch
             if processed_total != total_on_page:
                 self.logger.warning(f"⚠️  MISMATCH: Processed {processed_total} but found {total_on_page} on page!")
             elif events_skipped > 0:
-                self.logger.info(f"✅ All {total_on_page} events processed ({events_skipped} skipped due to missing data)")
+                self.logger.info(
+                    f"✅ All {total_on_page} events processed ({events_skipped} skipped due to missing data)"
+                )
             else:
                 self.logger.info(f"✅ All {total_on_page} events successfully processed!")
 

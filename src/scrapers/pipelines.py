@@ -132,4 +132,5 @@ class FalkorDBPipeline:
 
 class DropItem(Exception):
     """Exception to drop an item from the pipeline."""
+
     pass

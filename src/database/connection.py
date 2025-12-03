@@ -159,36 +159,20 @@ class FalkorDBConnection:
         """Create indexes for better query performance."""
         try:
             # Index on Event nodes
-            self.execute_query(
-                "CREATE INDEX FOR (e:Event) ON (e.uuid)"
-            )
-            self.execute_query(
-                "CREATE INDEX FOR (e:Event) ON (e.title)"
-            )
-            self.execute_query(
-                "CREATE INDEX FOR (e:Event) ON (e.date)"
-            )
+            self.execute_query("CREATE INDEX FOR (e:Event) ON (e.uuid)")
+            self.execute_query("CREATE INDEX FOR (e:Event) ON (e.title)")
+            self.execute_query("CREATE INDEX FOR (e:Event) ON (e.date)")
 
             # Index on Venue nodes
-            self.execute_query(
-                "CREATE INDEX FOR (v:Venue) ON (v.uuid)"
-            )
-            self.execute_query(
-                "CREATE INDEX FOR (v:Venue) ON (v.name)"
-            )
+            self.execute_query("CREATE INDEX FOR (v:Venue) ON (v.uuid)")
+            self.execute_query("CREATE INDEX FOR (v:Venue) ON (v.name)")
 
             # Index on Artist nodes
-            self.execute_query(
-                "CREATE INDEX FOR (a:Artist) ON (a.uuid)"
-            )
-            self.execute_query(
-                "CREATE INDEX FOR (a:Artist) ON (a.name)"
-            )
+            self.execute_query("CREATE INDEX FOR (a:Artist) ON (a.uuid)")
+            self.execute_query("CREATE INDEX FOR (a:Artist) ON (a.name)")
 
             # Index on Tag nodes
-            self.execute_query(
-                "CREATE INDEX FOR (t:Tag) ON (t.name)"
-            )
+            self.execute_query("CREATE INDEX FOR (t:Tag) ON (t.name)")
 
             logger.info("Database indexes created successfully")
 
