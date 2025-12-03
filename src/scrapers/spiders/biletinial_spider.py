@@ -6,6 +6,7 @@ import asyncio
 import scrapy
 from src.scrapers.spiders.base import BaseEventSpider
 from src.scrapers.items import EventItem
+from src.utils.date_parser import parse_turkish_date_range
 
 
 class BiletinialSpider(BaseEventSpider):
@@ -198,27 +199,32 @@ class BiletinialSpider(BaseEventSpider):
                     title = self.extract_title(event)
                     venue = self.extract_venue(event)
                     city = self.extract_city(event)
-                    date = self.extract_date(event)
+                    date_string = self.extract_date(event)
                     url = self.extract_url(event, response)
                     image_url = self.extract_image(event)
                     event_type = self.extract_type(event)
 
                     if title:  # Only yield if we have at least a title
-                        event_item = EventItem(
-                            title=self.clean_text(title),
-                            venue=self.clean_text(venue) if venue else None,
-                            city=self.clean_text(city) if city else "İstanbul",  # Default to Istanbul
-                            date=date,
-                            price=None,  # Price not visible on listing page
-                            url=url,
-                            image_url=image_url,
-                            category=event_type if event_type else "Etkinlik",
-                            source="biletinial",
-                        )
+                        # Parse date range into individual dates
+                        individual_dates = parse_turkish_date_range(date_string)
 
-                        self.log_event(event_item)
-                        events_yielded += 1
-                        yield event_item
+                        # Yield separate event for each date
+                        for individual_date in individual_dates:
+                            event_item = EventItem(
+                                title=self.clean_text(title),
+                                venue=self.clean_text(venue) if venue else None,
+                                city=self.clean_text(city) if city else "İstanbul",  # Default to Istanbul
+                                date=individual_date,
+                                price=None,  # Price not visible on listing page
+                                url=url,
+                                image_url=image_url,
+                                category=event_type if event_type else "Etkinlik",
+                                source="biletinial",
+                            )
+
+                            self.log_event(event_item)
+                            events_yielded += 1
+                            yield event_item
                     else:
                         events_skipped += 1
 

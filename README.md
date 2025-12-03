@@ -10,7 +10,7 @@ Web scraper for Turkish cultural events (theater, concerts, exhibitions) using g
 
 Scrapes events from **Biletix** and **Biletinial** and stores them in a FalkorDB graph database with:
 - Event title, venue, date, city, price, image
-- Multi-date event support (same event, different performances)
+- **Smart multi-date parsing**: Automatically splits date ranges into individual events
 - Duplicate detection (title + venue + date)
 - Data validation and quality checks
 
@@ -131,7 +131,8 @@ pytest tests/unit/test_event_model.py::TestEventNode::test_event_creation -v
 tests/
 ├── unit/
 │   ├── test_event_model.py    # EventNode model tests (10 tests)
-│   └── test_pipelines.py       # Pipeline tests (18 tests)
+│   ├── test_pipelines.py       # Pipeline tests (18 tests)
+│   └── test_date_parser.py     # Date parsing tests (15 tests)
 ├── integration/                 # Integration tests (future)
 └── conftest.py                 # Shared fixtures
 ```
@@ -164,12 +165,13 @@ This generates a comprehensive report with:
 
 ✅ **Working Features:**
 - **Two sources**: Biletix (229 events) + Biletinial (1,207 events)
+- **Smart date parsing**: Automatically splits "Aralık 10-16" into 7 separate events
 - **Multi-date support**: Same event with different dates stored separately
 - **Duplicate detection**: Works across scraper runs (title + venue + date)
 - **Full pipeline**: scrape → validate → deduplicate → save
 - **Graph database storage**: FalkorDB with Cypher queries
 - **Simple CLI commands**: Make-based workflow
-- **Unit tests**: 28 tests with 100% pass rate
+- **Unit tests**: 43 tests with 100% pass rate
 - **CI/CD**: GitHub Actions with automated testing
 - **Data verification**: Quality checking script
 
