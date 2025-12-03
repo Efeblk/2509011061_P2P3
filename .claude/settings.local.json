@@ -26,7 +26,12 @@
       "Bash(make up:*)",
       "Bash(playwright install:*)",
       "Bash(tee:*)",
-      "Bash(make clean:*)"
+      "Bash(make clean:*)",
+      "Bash(bash -c \"source venv/bin/activate && scrapy crawl biletinial 2>&1\")",
+      "Bash(make install:*)",
+      "Bash(if [ -f biletinial_page_content.html ])",
+      "Bash(then grep -o \"class=\"\"sehir-detay__liste-mobiltarih\"\"[^>]*>[^<]*<span[^>]*>[^<]*</span>[^<]*<span[^>]*>[^<]*</span>[^<]*<span[^>]*>[^<]*</span>\" biletinial_page_content.html)",
+      "Bash(fi)"
     ],
     "deny": [],
     "ask": []
