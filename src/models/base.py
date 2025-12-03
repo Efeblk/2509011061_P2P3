@@ -58,7 +58,7 @@ class Node(ABC):
                 RETURN n
             """
 
-            result = db_connection.execute_query(query, properties)
+            db_connection.execute_query(query, properties)
             logger.debug(f"Saved {self.label} node with UUID: {self.uuid}")
             return True
 

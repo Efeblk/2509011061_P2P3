@@ -188,12 +188,6 @@ class BiletixSpider(BaseEventSpider):
     def extract_title(self, element):
         """Extract event title from element."""
         # Based on actual Biletix HTML structure
-        # Try event name selectors
-        selectors = [
-            "a.searchResultEventNameMobile::text",  # Mobile view
-            "a.ln1.searchResultPlace::attr(href)",  # Has event ID in href
-        ]
-
         # Try to get from mobile name first
         title = element.css("a.searchResultEventNameMobile::text").get()
         if title and title.strip():

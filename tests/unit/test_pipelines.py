@@ -180,7 +180,7 @@ class TestDuplicatesPipeline:
             "date": "2025-12-15",
         }
 
-        result = self.pipeline.process_item(item, self.spider)
+        self.pipeline.process_item(item, self.spider)
         assert ("Test Event", "", "2025-12-15") in self.pipeline.seen_events
 
     @patch("src.scrapers.pipelines.EventNode.find_by_title_venue_and_date")
