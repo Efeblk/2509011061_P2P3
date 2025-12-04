@@ -267,13 +267,14 @@ async def test_cinema_date_extraction():
                 release_date = None
 
                 # Method 1: Look for "Vizyon Tarihi" text
-                date_element = await page.query_selector("text=Vizyon Tarihi")
-                if date_element:
-                    parent = await date_element.evaluate("el => el.parentElement")
-                    if parent:
-                        full_text = await page.evaluate("el => el.textContent", parent)
-                        if "Vizyon Tarihi" in full_text:
+                try:
+                    date_element = await page.query_selector("text=Vizyon Tarihi")
+                    if date_element:
+                        full_text = await date_element.evaluate("el => el.parentElement.textContent")
+                        if full_text and "Vizyon Tarihi" in full_text:
                             release_date = full_text.replace("Vizyon Tarihi", "").strip()
+                except Exception:
+                    pass
 
                 # Method 2: Regex search in page content
                 if not release_date:

@@ -300,21 +300,24 @@ class BiletinialSpider(BaseEventSpider):
             release_date = None
 
             # Try selector 1: Look for "Vizyon Tarihi" text and extract date after it
-            date_element = await page.query_selector("text=Vizyon Tarihi")
-            if date_element:
-                # Get parent or sibling element that contains the full date
-                parent = await date_element.evaluate("el => el.parentElement")
-                if parent:
-                    full_text = await page.evaluate("el => el.textContent", parent)
+            try:
+                date_element = await page.query_selector("text=Vizyon Tarihi")
+                if date_element:
+                    full_text = await date_element.evaluate("el => el.parentElement.textContent")
                     # Extract date from "Vizyon Tarihi 28 Kasım 2025 Cuma"
-                    if "Vizyon Tarihi" in full_text:
+                    if full_text and "Vizyon Tarihi" in full_text:
                         release_date = full_text.replace("Vizyon Tarihi", "").strip()
+            except Exception:
+                pass
 
             # Try selector 2: Direct CSS selector if there's a specific class
             if not release_date:
-                date_text = await page.text_content(".vizyon-tarihi, .release-date", timeout=2000)
-                if date_text:
-                    release_date = date_text.strip()
+                try:
+                    date_text = await page.text_content(".vizyon-tarihi, .release-date", timeout=2000)
+                    if date_text:
+                        release_date = date_text.strip()
+                except Exception:
+                    pass
 
             # Try selector 3: Extract from any strong/b tag containing date-like pattern
             if not release_date:
