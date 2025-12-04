@@ -25,6 +25,7 @@ class BiletinialSpider(BaseEventSpider):
         "https://biletinial.com/tr-tr/sinema/istanbul",  # Cinema events in Istanbul
         "https://biletinial.com/tr-tr/opera-bale/istanbul",  # Opera & Ballet events in Istanbul
         "https://biletinial.com/tr-tr/gosteri/istanbul",  # Show/Performance events in Istanbul
+        "https://biletinial.com/tr-tr/egitim/istanbul",  # Education/Workshop events in Istanbul
         "https://biletinial.com/tr-tr/etkinlikleri/stand-up",  # Stand-up comedy events
         "https://biletinial.com/tr-tr/etkinlikleri/senfoni-etkinlikleri",  # Symphony events
     ]
