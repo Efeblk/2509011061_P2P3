@@ -23,6 +23,7 @@ class BiletinialSpider(BaseEventSpider):
         "https://biletinial.com/tr-tr/muzik/istanbul",  # Music events in Istanbul
         "https://biletinial.com/tr-tr/tiyatro/istanbul",  # Theater events in Istanbul
         "https://biletinial.com/tr-tr/sinema/istanbul",  # Cinema events in Istanbul
+        "https://biletinial.com/tr-tr/etkinlikleri/stand-up",  # Stand-up comedy events
     ]
 
     custom_settings = {
