@@ -6,7 +6,7 @@ import asyncio
 import scrapy
 from src.scrapers.spiders.base import BaseEventSpider
 from src.scrapers.items import EventItem
-from src.utils.date_parser import parse_turkish_date_range
+from src.utils.date_parser import parse_turkish_date_range, extract_date_from_title
 
 
 class BiletinialSpider(BaseEventSpider):
@@ -214,7 +214,14 @@ class BiletinialSpider(BaseEventSpider):
                     event_type = self.extract_type(event)
 
                     if title:  # Only yield if we have at least a title
-                        # If no date found and URL is for cinema, follow link to get release date
+                        # If no date found, try to extract from title
+                        if not date_string or not date_string.strip():
+                            date_from_title = extract_date_from_title(title)
+                            if date_from_title:
+                                self.logger.debug(f"Extracted date from title '{title}': {date_from_title}")
+                                date_string = date_from_title
+
+                        # If still no date and URL is for cinema, follow link to get release date
                         if (not date_string or not date_string.strip()) and url and "/sinema/" in url:
                             self.logger.debug(f"No date on listing for cinema event '{title}', will follow link")
                             # Yield a request to parse the detail page

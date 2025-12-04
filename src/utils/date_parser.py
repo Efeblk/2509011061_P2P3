@@ -91,6 +91,59 @@ def parse_turkish_date_range(date_string: str) -> List[str]:
     return dates if dates else [date_string]
 
 
+def extract_date_from_title(title: str) -> str:
+    """
+    Extract date from event title if present.
+
+    Examples:
+        "5 Aralık Konseri" -> "Aralık 05"
+        "19 Aralık Konseri Antalya" -> "Aralık 19"
+        "DenizBank Konserleri 30 Ocak" -> "Ocak 30"
+        "DenizBank Konserleri 8 Aralık" -> "Aralık 08"
+
+    Args:
+        title: Event title
+
+    Returns:
+        Extracted date string or empty string if not found
+    """
+    if not title:
+        return ""
+
+    turkish_months = [
+        "Ocak",
+        "Şubat",
+        "Mart",
+        "Nisan",
+        "Mayıs",
+        "Haziran",
+        "Temmuz",
+        "Ağustos",
+        "Eylül",
+        "Ekim",
+        "Kasım",
+        "Aralık",
+    ]
+
+    # Pattern 1: "DD Month" or "D Month" (5 Aralık, 19 Aralık, 30 Ocak)
+    for month in turkish_months:
+        # Try "number month" pattern
+        pattern1 = r"(\d{1,2})\s+" + month
+        match = re.search(pattern1, title, re.IGNORECASE)
+        if match:
+            day = int(match.group(1))
+            return f"{month} {day:02d}"
+
+        # Try "month number" pattern (less common but possible)
+        pattern2 = month + r"\s+(\d{1,2})"
+        match = re.search(pattern2, title, re.IGNORECASE)
+        if match:
+            day = int(match.group(1))
+            return f"{month} {day:02d}"
+
+    return ""
+
+
 def normalize_date_format(date_string: str) -> str:
     """
     Normalize date format for consistency.
