@@ -28,6 +28,7 @@ class BiletinialSpider(BaseEventSpider):
         "https://biletinial.com/tr-tr/egitim/istanbul",  # Education/Workshop events in Istanbul
         "https://biletinial.com/tr-tr/seminer/istanbul",  # Seminar/Conference events in Istanbul
         "https://biletinial.com/tr-tr/etkinlik/istanbul",  # General events in Istanbul
+        "https://biletinial.com/tr-tr/eglence/istanbul",  # Entertainment events in Istanbul
         "https://biletinial.com/tr-tr/etkinlikleri/stand-up",  # Stand-up comedy events
         "https://biletinial.com/tr-tr/etkinlikleri/senfoni-etkinlikleri",  # Symphony events
     ]

@@ -12,5 +12,6 @@
 - https://biletinial.com/tr-tr/egitim/istanbul
 - https://biletinial.com/tr-tr/seminer/istanbul
 - https://biletinial.com/tr-tr/etkinlik/istanbul
+- https://biletinial.com/tr-tr/eglence/istanbul
 - https://biletinial.com/tr-tr/etkinlikleri/stand-up
 - https://biletinial.com/tr-tr/etkinlikleri/senfoni-etkinlikleri
