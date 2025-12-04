@@ -214,26 +214,47 @@ class BiletinialSpider(BaseEventSpider):
                     event_type = self.extract_type(event)
 
                     if title:  # Only yield if we have at least a title
-                        # Parse date range into individual dates
-                        individual_dates = parse_turkish_date_range(date_string)
-
-                        # Yield separate event for each date
-                        for individual_date in individual_dates:
-                            event_item = EventItem(
-                                title=self.clean_text(title),
-                                venue=self.clean_text(venue) if venue else None,
-                                city=self.clean_text(city) if city else "İstanbul",  # Default to Istanbul
-                                date=individual_date,
-                                price=None,  # Price not visible on listing page
+                        # If no date found and URL is for cinema, follow link to get release date
+                        if (not date_string or not date_string.strip()) and url and "/sinema/" in url:
+                            self.logger.debug(f"No date on listing for cinema event '{title}', will follow link")
+                            # Yield a request to parse the detail page
+                            yield scrapy.Request(
                                 url=url,
-                                image_url=image_url,
-                                category=event_type if event_type else "Etkinlik",
-                                source="biletinial",
+                                callback=self.parse_cinema_detail,
+                                meta={
+                                    "playwright": True,
+                                    "playwright_include_page": True,
+                                    "title": title,
+                                    "venue": venue,
+                                    "city": city,
+                                    "url": url,
+                                    "image_url": image_url,
+                                    "event_type": event_type,
+                                },
+                                dont_filter=True,
                             )
-
-                            self.log_event(event_item)
                             events_yielded += 1
-                            yield event_item
+                        else:
+                            # Parse date range into individual dates
+                            individual_dates = parse_turkish_date_range(date_string)
+
+                            # Yield separate event for each date
+                            for individual_date in individual_dates:
+                                event_item = EventItem(
+                                    title=self.clean_text(title),
+                                    venue=self.clean_text(venue) if venue else None,
+                                    city=self.clean_text(city) if city else "İstanbul",  # Default to Istanbul
+                                    date=individual_date,
+                                    price=None,  # Price not visible on listing page
+                                    url=url,
+                                    image_url=image_url,
+                                    category=event_type if event_type else "Etkinlik",
+                                    source="biletinial",
+                                )
+
+                                self.log_event(event_item)
+                                events_yielded += 1
+                                yield event_item
                     else:
                         events_skipped += 1
 
@@ -258,6 +279,135 @@ class BiletinialSpider(BaseEventSpider):
                 )
             else:
                 self.logger.info(f"✅ All {total_on_page} events successfully processed!")
+
+        finally:
+            await page.close()
+
+    async def parse_cinema_detail(self, response):
+        """
+        Parse cinema event detail page to extract release date (Vizyon Tarihi).
+        This is called for cinema events that don't have dates on the listing page.
+        """
+        page = response.meta["playwright_page"]
+
+        try:
+            # Wait for page to load
+            await page.wait_for_load_state("domcontentloaded")
+            await asyncio.sleep(2)  # Wait for dynamic content
+
+            # Extract release date: "Vizyon Tarihi 28 Kasım 2025 Cuma"
+            # Try multiple selectors as the date might be in different places
+            release_date = None
+
+            # Try selector 1: Look for "Vizyon Tarihi" text and extract date after it
+            date_element = await page.query_selector("text=Vizyon Tarihi")
+            if date_element:
+                # Get parent or sibling element that contains the full date
+                parent = await date_element.evaluate("el => el.parentElement")
+                if parent:
+                    full_text = await page.evaluate("el => el.textContent", parent)
+                    # Extract date from "Vizyon Tarihi 28 Kasım 2025 Cuma"
+                    if "Vizyon Tarihi" in full_text:
+                        release_date = full_text.replace("Vizyon Tarihi", "").strip()
+
+            # Try selector 2: Direct CSS selector if there's a specific class
+            if not release_date:
+                date_text = await page.text_content(".vizyon-tarihi, .release-date", timeout=2000)
+                if date_text:
+                    release_date = date_text.strip()
+
+            # Try selector 3: Extract from any strong/b tag containing date-like pattern
+            if not release_date:
+                all_text = await page.content()
+                # Look for Turkish month names in the content
+                turkish_months = [
+                    "Ocak",
+                    "Şubat",
+                    "Mart",
+                    "Nisan",
+                    "Mayıs",
+                    "Haziran",
+                    "Temmuz",
+                    "Ağustos",
+                    "Eylül",
+                    "Ekim",
+                    "Kasım",
+                    "Aralık",
+                ]
+
+                # Search in the HTML content
+                for month in turkish_months:
+                    if "Vizyon Tarihi" in all_text and month in all_text:
+                        # Extract the date portion
+                        import re
+
+                        pattern = r"Vizyon Tarihi\s*([0-9]{1,2}\s+" + month + r"\s+[0-9]{4})"
+                        match = re.search(pattern, all_text)
+                        if match:
+                            release_date = match.group(1).strip()
+                            break
+
+            # Get metadata from the request
+            title = response.meta.get("title")
+            venue = response.meta.get("venue")
+            city = response.meta.get("city", "İstanbul")
+            url = response.meta.get("url")
+            image_url = response.meta.get("image_url")
+            event_type = response.meta.get("event_type", "Sinema")
+
+            if release_date:
+                self.logger.info(f"✓ Found release date for '{title}': {release_date}")
+
+                # Parse date range into individual dates (in case there's a range)
+                individual_dates = parse_turkish_date_range(release_date)
+
+                # Yield event for each date
+                for individual_date in individual_dates:
+                    event_item = EventItem(
+                        title=self.clean_text(title),
+                        venue=self.clean_text(venue) if venue else None,
+                        city=self.clean_text(city) if city else "İstanbul",
+                        date=individual_date,
+                        price=None,
+                        url=url,
+                        image_url=image_url,
+                        category=event_type,
+                        source="biletinial",
+                    )
+
+                    self.log_event(event_item)
+                    yield event_item
+            else:
+                self.logger.warning(f"⚠️  Could not find release date for cinema event: {title}")
+                # Still yield the event but with empty date
+                event_item = EventItem(
+                    title=self.clean_text(title),
+                    venue=self.clean_text(venue) if venue else None,
+                    city=self.clean_text(city) if city else "İstanbul",
+                    date=None,
+                    price=None,
+                    url=url,
+                    image_url=image_url,
+                    category=event_type,
+                    source="biletinial",
+                )
+                yield event_item
+
+        except Exception as e:
+            self.logger.error(f"Error parsing cinema detail page: {e}")
+            # Yield event with no date rather than losing it completely
+            event_item = EventItem(
+                title=self.clean_text(response.meta.get("title")),
+                venue=None,
+                city="İstanbul",
+                date=None,
+                price=None,
+                url=response.meta.get("url"),
+                image_url=response.meta.get("image_url"),
+                category="Sinema",
+                source="biletinial",
+            )
+            yield event_item
 
         finally:
             await page.close()
