@@ -9,3 +9,4 @@
 - https://biletinial.com/tr-tr/sinema/istanbul
 - https://biletinial.com/tr-tr/opera-bale/istanbul
 - https://biletinial.com/tr-tr/etkinlikleri/stand-up
+- https://biletinial.com/tr-tr/etkinlikleri/senfoni-etkinlikleri
