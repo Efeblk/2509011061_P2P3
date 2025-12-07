@@ -49,5 +49,6 @@ jobs:
       env:
         FALKORDB_HOST: localhost
         FALKORDB_PORT: 6379
+        GEMINI_API_KEY: test_key_for_ci
       run: |
         pytest
