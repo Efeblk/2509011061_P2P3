@@ -116,7 +116,7 @@ class FalkorDBPipeline:
 
             # Save to database in a separate thread to avoid blocking the reactor
             import asyncio
-            
+
             save_success = await asyncio.to_thread(event.save)
 
             if save_success:

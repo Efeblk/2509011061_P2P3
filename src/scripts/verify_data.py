@@ -11,9 +11,10 @@ Checks for:
 import sys
 from falkordb import FalkorDB
 
+
 def verify_data():
     """Verify the quality of scraped data in the database."""
-    
+
     try:
         db = FalkorDB(host="localhost", port=6379)
         g = db.select_graph("eventgraph")
@@ -43,7 +44,7 @@ def verify_data():
         print("\nEvents by Source:")
         for row in by_source.result_set:
             print(f"  {row[0]}: {row[1]} events")
-            
+
         # Review stats
         review_query = g.query("MATCH (ec:EventContent) WHERE ec.content_type = 'user_review' RETURN count(ec)")
         review_count = review_query.result_set[0][0]
@@ -70,9 +71,12 @@ def verify_data():
     print(f"Missing Date: {missing_date}")
     print(f"Missing URL: {missing_url}")
 
-    if missing_title > 0: issues.append(f"{missing_title} events missing title")
-    if missing_date > 0: issues.append(f"{missing_date} events missing date")
-    if missing_url > 0: issues.append(f"{missing_url} events missing URL")
+    if missing_title > 0:
+        issues.append(f"{missing_title} events missing title")
+    if missing_date > 0:
+        issues.append(f"{missing_date} events missing date")
+    if missing_url > 0:
+        issues.append(f"{missing_url} events missing URL")
 
     # 3. Data Quality Checks
     print("\n🔍 DATA QUALITY CHECKS")
@@ -119,6 +123,7 @@ def verify_data():
     else:
         print("\n✅ No major issues found! Data quality looks good.")
         return True
+
 
 if __name__ == "__main__":
     success = verify_data()

@@ -431,10 +431,11 @@ class BiletinialSpider(BaseEventSpider):
             else:
                 # Save page HTML for debugging if no reviews found (only once)
                 import os
+
                 debug_file = "biletinial_detail_page.html"
                 if not os.path.exists(debug_file):
                     content = await page.content()
-                    with open(debug_file, 'w', encoding='utf-8') as f:
+                    with open(debug_file, "w", encoding="utf-8") as f:
                         f.write(content)
                     self.logger.info(f"Saved detail page HTML to {debug_file} for review structure analysis")
 
@@ -643,7 +644,7 @@ class BiletinialSpider(BaseEventSpider):
             if rating_text:
                 rating_text = rating_text.strip().strip('"')
                 # Convert Turkish decimal (comma) to float
-                rating = float(rating_text.replace(',', '.'))
+                rating = float(rating_text.replace(",", "."))
             else:
                 rating = None
 
@@ -652,7 +653,8 @@ class BiletinialSpider(BaseEventSpider):
             if review_text:
                 # Extract number from "(1121 Yorum)"
                 import re
-                match = re.search(r'\((\d+)\s*Yorum\)', review_text)
+
+                match = re.search(r"\((\d+)\s*Yorum\)", review_text)
                 rating_count = int(match.group(1)) if match else None
             else:
                 rating_count = None
@@ -687,7 +689,7 @@ class BiletinialSpider(BaseEventSpider):
             while clicks < max_clicks:
                 try:
                     # Look for "Daha Fazla Yorum" button
-                    load_more_button = await page.query_selector('text=Daha Fazla Yorum')
+                    load_more_button = await page.query_selector("text=Daha Fazla Yorum")
                     if load_more_button:
                         # Check if button is visible and clickable
                         is_visible = await load_more_button.is_visible()
@@ -724,24 +726,20 @@ class BiletinialSpider(BaseEventSpider):
             # Pattern: <div class="yds_cinema_movie_yorum_person comment_editor comment_AI">
             #          <mark>biletinial AI</mark>
             #          <p>AI summary text...</p>
-            ai_summary_container = sel.css('.comment_editor.comment_AI, .yds_cinema_movie_yorum_person.comment_AI')
+            ai_summary_container = sel.css(".comment_editor.comment_AI, .yds_cinema_movie_yorum_person.comment_AI")
             if ai_summary_container:
-                ai_text = ai_summary_container.css('p::text').get()
+                ai_text = ai_summary_container.css("p::text").get()
                 if ai_text and len(ai_text.strip()) > 20:
-                    reviews.append({
-                        'author': 'biletinial AI',
-                        'text': ai_text.strip(),
-                        'content_type': 'ai_summary'
-                    })
+                    reviews.append({"author": "biletinial AI", "text": ai_text.strip(), "content_type": "ai_summary"})
                     self.logger.debug(f"Extracted AI summary: {ai_text[:80]}...")
 
             # Extract user reviews from comment containers
             # Pattern: <div class="yds_comment_container" id="comment_container">
             #          <div class="yds_cinema_movie_yorum_person">...</div>
-            comment_containers = sel.css('.yds_comment_container .yds_cinema_movie_yorum_person')
+            comment_containers = sel.css(".yds_comment_container .yds_cinema_movie_yorum_person")
 
             # Filter out AI comments (already extracted)
-            user_comment_containers = [c for c in comment_containers if 'comment_AI' not in c.get()]
+            user_comment_containers = [c for c in comment_containers if "comment_AI" not in c.get()]
 
             self.logger.debug(f"Found {len(user_comment_containers)} user comment elements")
 
@@ -750,37 +748,45 @@ class BiletinialSpider(BaseEventSpider):
 
                 # Extract author name from various possible locations
                 # Try: .yds_cinema_movie_yorum_person_attribute_name_rank, strong, mark tags
-                author = comment_el.css('.yds_cinema_movie_yorum_person_attribute_name_rank::text, strong::text, mark::text').get()
+                author = comment_el.css(
+                    ".yds_cinema_movie_yorum_person_attribute_name_rank::text, strong::text, mark::text"
+                ).get()
                 if author:
-                    review_data['author'] = author.strip()
+                    review_data["author"] = author.strip()
 
                 # Extract review text from specific container
                 # The first <p> often contains "SEYİRCİ" (Spectator) label, so we target the comment body
-                text = comment_el.css('.yds_cinema_movie_yorum_person_attribute_satir p::text').get()
-                
+                text = comment_el.css(".yds_cinema_movie_yorum_person_attribute_satir p::text").get()
+
                 if not text:
                     # Fallback: Try all paragraphs but filter out known labels
-                    text_parts = comment_el.css('p::text').getall()
+                    text_parts = comment_el.css("p::text").getall()
                     valid_parts = [t.strip() for t in text_parts if t.strip() and "SEYİRCİ" not in t]
-                    text = ' '.join(valid_parts).strip() if valid_parts else None
+                    text = " ".join(valid_parts).strip() if valid_parts else None
 
                 if text:
-                    review_data['text'] = text.strip()
-                    review_data['content_type'] = 'user_review'
+                    review_data["text"] = text.strip()
+                    review_data["content_type"] = "user_review"
 
                 # Extract rating if available (some reviews may have individual ratings)
-                rating_el = comment_el.css('.rating::text, .stars::text, .puan::text, .yds_cinema_movie_yorum_person_attribute_satir::text').get()
+                rating_el = comment_el.css(
+                    ".rating::text, .stars::text, .puan::text, .yds_cinema_movie_yorum_person_attribute_satir::text"
+                ).get()
                 if rating_el:
-                    rating_match = re.search(r'(\d+[,\.]?\d*)', rating_el)
+                    rating_match = re.search(r"(\d+[,\.]?\d*)", rating_el)
                     if rating_match:
-                        review_data['rating'] = float(rating_match.group(1).replace(',', '.'))
+                        review_data["rating"] = float(rating_match.group(1).replace(",", "."))
 
                 # Only add review if it has actual text (more than 10 chars to avoid noise)
-                if review_data.get('text') and len(review_data.get('text', '')) > 10:
+                if review_data.get("text") and len(review_data.get("text", "")) > 10:
                     reviews.append(review_data)
-                    self.logger.debug(f"Extracted user review from {review_data.get('author', 'Unknown')}: {review_data.get('text')[:50]}...")
+                    self.logger.debug(
+                        f"Extracted user review from {review_data.get('author', 'Unknown')}: {review_data.get('text')[:50]}..."
+                    )
                 else:
-                    self.logger.debug(f"Skipping review from {review_data.get('author', 'Unknown')}: Text too short/empty (len={len(review_data.get('text', '')) if review_data.get('text') else 0})")
+                    self.logger.debug(
+                        f"Skipping review from {review_data.get('author', 'Unknown')}: Text too short/empty (len={len(review_data.get('text', '')) if review_data.get('text') else 0})"
+                    )
 
             if reviews:
                 self.logger.info(f"Total extracted: {len(reviews)} reviews (AI summaries + user reviews)")
@@ -790,6 +796,7 @@ class BiletinialSpider(BaseEventSpider):
         except Exception as e:
             self.logger.warning(f"Error extracting reviews: {e}")
             import traceback
+
             self.logger.debug(f"Traceback: {traceback.format_exc()}")
             return None
 
