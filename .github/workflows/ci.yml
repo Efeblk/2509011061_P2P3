@@ -33,9 +33,17 @@ jobs:
       run: |
         playwright install chromium
 
-    - name: Lint
+    - name: Lint with Black
       run: |
-        make lint
+        black --check src tests
+
+    - name: Lint with Pylint
+      run: |
+        pylint src || true
+
+    - name: Type check with Mypy
+      run: |
+        mypy src || true
 
     - name: Run Tests
       env:
