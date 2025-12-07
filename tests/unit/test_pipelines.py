@@ -206,6 +206,7 @@ class TestDuplicatesPipeline:
         assert result == item2
 
 
+@pytest.mark.asyncio
 class TestFalkorDBPipeline:
     """Test FalkorDBPipeline functionality."""
 
@@ -215,13 +216,13 @@ class TestFalkorDBPipeline:
         self.spider = Mock()
         self.spider.name = "test_spider"
 
-    def test_pipeline_initialization(self):
+    async def test_pipeline_initialization(self):
         """Test pipeline initializes counters."""
         assert self.pipeline.events_saved == 0
         assert self.pipeline.events_failed == 0
 
     @patch("src.scrapers.pipelines.EventNode")
-    def test_successful_save_increments_counter(self, mock_event_class):
+    async def test_successful_save_increments_counter(self, mock_event_class):
         """Test that successful saves increment the counter."""
         mock_event = Mock()
         mock_event.save.return_value = True
@@ -234,12 +235,12 @@ class TestFalkorDBPipeline:
             "venue": "Test Venue",
         }
 
-        self.pipeline.process_item(item, self.spider)
+        await self.pipeline.process_item(item, self.spider)
         assert self.pipeline.events_saved == 1
         assert self.pipeline.events_failed == 0
 
     @patch("src.scrapers.pipelines.EventNode")
-    def test_failed_save_increments_failure_counter(self, mock_event_class):
+    async def test_failed_save_increments_failure_counter(self, mock_event_class):
         """Test that failed saves increment failure counter."""
         mock_event = Mock()
         mock_event.save.return_value = False
@@ -250,12 +251,12 @@ class TestFalkorDBPipeline:
             "title": "Test Event",
         }
 
-        self.pipeline.process_item(item, self.spider)
+        await self.pipeline.process_item(item, self.spider)
         assert self.pipeline.events_saved == 0
         assert self.pipeline.events_failed == 1
 
     @patch("src.scrapers.pipelines.EventNode")
-    def test_exception_during_save_raises_drop_item(self, mock_event_class):
+    async def test_exception_during_save_raises_drop_item(self, mock_event_class):
         """Test that exceptions during save raise DropItem."""
         mock_event_class.side_effect = Exception("Database error")
 
@@ -264,6 +265,6 @@ class TestFalkorDBPipeline:
         }
 
         with pytest.raises(DropItem, match="Database error"):
-            self.pipeline.process_item(item, self.spider)
+            await self.pipeline.process_item(item, self.spider)
 
         assert self.pipeline.events_failed == 1

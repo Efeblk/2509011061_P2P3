@@ -19,3 +19,8 @@ class EventItem(scrapy.Item):
     image_url = scrapy.Field()
     category = scrapy.Field()
     source = scrapy.Field()
+
+    # EventContent fields
+    rating = scrapy.Field()
+    rating_count = scrapy.Field()
+    reviews = scrapy.Field()  # List of review dicts from detail page

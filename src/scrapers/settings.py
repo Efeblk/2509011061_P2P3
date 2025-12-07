@@ -11,7 +11,7 @@ NEWSPIDER_MODULE = "src.scrapers.spiders"
 ROBOTSTXT_OBEY = False
 
 # Configure maximum concurrent requests
-CONCURRENT_REQUESTS = 8
+CONCURRENT_REQUESTS = 6
 
 # Configure a delay for requests for the same website
 DOWNLOAD_DELAY = 2
@@ -54,7 +54,7 @@ DOWNLOAD_HANDLERS = {
 PLAYWRIGHT_BROWSER_TYPE = "chromium"
 PLAYWRIGHT_LAUNCH_OPTIONS = {
     "headless": True,
-    "timeout": 30000,
+    "timeout": 60000,
 }
 
 # Set settings whose default value is deprecated to a future-proof value

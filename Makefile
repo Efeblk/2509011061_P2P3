@@ -1,6 +1,6 @@
 # Makefile for EventGraph project
 
-.PHONY: help install setup clean fclean docker-up docker-down up down scrape view db-shell
+.PHONY: help install setup clean clean-data fclean docker-up docker-down up down scrape scrape-reviews view db-shell
 
 # Python command (use python if in venv, otherwise python3)
 PYTHON := $(shell command -v python 2> /dev/null || echo python3)
@@ -16,8 +16,10 @@ help:
 	@echo "  make scrape-biletix    - Scrape events from Biletix only"
 	@echo "  make scrape-biletinial - Scrape events from Biletinial only"
 	@echo "  make view         - View scraped events"
-	@echo "  make db-shell     - Open database CLI (Cypher queries)"
+	@echo "  make verify       - Verify data integrity"
+	@echo "  make test         - Run tests"
 	@echo "  make clean        - Clean cache files"
+	@echo "  make clean-data   - Wipe database data (keeps Docker running)"
 	@echo "  make fclean       - Full clean (removes venv, database, cache)"
 	@echo ""
 	@echo "📦 Setup:"
@@ -54,6 +56,23 @@ clean:
 	@find . -type d -name ".mypy_cache" -exec rm -rf {} + 2>/dev/null || true
 	@rm -rf htmlcov/ .coverage dist/ build/ 2>/dev/null || true
 	@echo "✅ Cache cleaned"
+
+clean-data:
+	@echo "🗑️  Wiping database data..."
+	@echo ""
+	@if docker ps | grep -q eventgraph-falkordb; then \
+		docker exec eventgraph-falkordb redis-cli FLUSHALL > /dev/null 2>&1 && \
+			echo "✅ Database wiped successfully!" && \
+			echo "" && \
+			echo "Database is now empty. Reinitialize with:" && \
+			echo "  make up"; \
+	else \
+		echo "❌ Database container is not running!" && \
+		echo "" && \
+		echo "Start the database first:" && \
+		echo "  make up" && \
+		exit 1; \
+	fi
 
 fclean: clean
 	@echo "🗑️  Full cleanup - removing everything..."
@@ -168,4 +187,22 @@ scrape-biletinial:
 view:
 	@echo "📊 Events in database:"
 	@echo ""
-	@bash -c "source venv/bin/activate && python -c \"from falkordb import FalkorDB; db = FalkorDB(host='localhost', port=6379); g = db.select_graph('eventgraph'); count_r = g.query('MATCH (e:Event) RETURN count(e) as count'); total = count_r.result_set[0][0]; r = g.query('MATCH (e:Event) RETURN e.title, e.venue, e.city, e.price, e.date, e.source ORDER BY e.city, e.title'); print(f'\\nTotal: {total} events\\n'); [print(f'{i+1}. {row[0]}\\n   📍 City: {row[2] or \\\"Unknown\\\"}\\n   🏛️  Venue: {row[1]}\\n   💰 Price: {row[3] or \\\"N/A\\\"} TL\\n   📅 Date: {row[4]}\\n   🔗 Source: {row[5]}\\n') for i, row in enumerate(r.result_set)]\""
+	@bash -c 'source venv/bin/activate && python src/scripts/view_events.py'
+
+# Validation & Testing
+test:
+	@echo "🧪 Running tests..."
+	@bash -c 'source venv/bin/activate && pytest'
+
+lint:
+	@echo "🔍 Running linters..."
+	@echo "Checking with Black..."
+	@bash -c 'source venv/bin/activate && black --check src tests'
+	@echo "Checking with Pylint..."
+	@bash -c 'source venv/bin/activate && pylint src || true'
+	@echo "Checking with Mypy..."
+	@bash -c 'source venv/bin/activate && mypy src || true'
+
+verify:
+	@echo "🔎 Verifying data integrity..."
+	@bash -c 'source venv/bin/activate && python src/scripts/verify_data.py'
