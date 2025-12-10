@@ -60,19 +60,11 @@ clean:
 clean-data:
 	@echo "🗑️  Wiping database data..."
 	@echo ""
-	@if docker ps | grep -q eventgraph-falkordb; then \
-		docker exec eventgraph-falkordb redis-cli FLUSHALL > /dev/null 2>&1 && \
-			echo "✅ Database wiped successfully!" && \
-			echo "" && \
-			echo "Database is now empty. Reinitialize with:" && \
-			echo "  make up"; \
-	else \
-		echo "❌ Database container is not running!" && \
-		echo "" && \
-		echo "Start the database first:" && \
-		echo "  make up" && \
-		exit 1; \
-	fi
+	@echo ""
+	@venv/bin/python src/scripts/wipe_db.py
+	@echo ""
+	@echo "Database is now empty. Reinitialize with:"
+	@echo "  make up"
 
 fclean: clean
 	@echo "🗑️  Full cleanup - removing everything..."
