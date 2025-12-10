@@ -35,15 +35,15 @@ jobs:
 
     - name: Lint with Black
       run: |
-        black --check src tests
+        black --check src tests ask.py
 
     - name: Lint with Pylint
       run: |
-        pylint src || true
+        pylint src ask.py || true
 
     - name: Type check with Mypy
       run: |
-        mypy src || true
+        mypy src ask.py || true
 
     - name: Run Tests
       env:

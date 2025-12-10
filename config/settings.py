@@ -46,6 +46,20 @@ class GeminiSettings(BaseSettings):
     )
 
 
+class OllamaSettings(BaseSettings):
+    """Local Ollama configuration."""
+
+    base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
+    model: str = Field(default="llama3.2", alias="OLLAMA_MODEL")
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
+
 class ScrapySettings(BaseSettings):
     """Web scraping configuration."""
 
@@ -72,6 +86,14 @@ class AISettings(BaseSettings):
     rate_limit_delay: float = Field(default=1.0, alias="AI_RATE_LIMIT_DELAY")
     max_retries: int = Field(default=3, alias="AI_MAX_RETRIES")
     cache_enabled: bool = Field(default=True, alias="AI_CACHE_ENABLED")
+    enable_embeddings: bool = Field(default=False, alias="AI_ENABLE_EMBEDDINGS")
+    
+    # Provider selection: "gemini" or "ollama"
+    provider: str = Field(default="gemini", alias="AI_PROVIDER")
+
+    # Models
+    model_fast: str = Field(default="llama3.2", alias="AI_MODEL_FAST")
+    model_reasoning: str = Field(default="gemini-3.0-pro", alias="AI_MODEL_REASONING")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -150,6 +172,7 @@ class Settings:
 
         self.falkordb = FalkorDBSettings()
         self.gemini = GeminiSettings()
+        self.ollama = OllamaSettings()
         self.scrapy = ScrapySettings()
         self.ai = AISettings()
         self.app = AppSettings()
@@ -160,6 +183,7 @@ class Settings:
         """Reload all settings from environment."""
         self.falkordb = FalkorDBSettings()
         self.gemini = GeminiSettings()
+        self.ollama = OllamaSettings()
         self.scrapy = ScrapySettings()
         self.ai = AISettings()
         self.app = AppSettings()

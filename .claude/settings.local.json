@@ -1,25 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(bash -c \"source venv/bin/activate && python fix_missing_dates.py\")",
-      "Bash(bash -c \"source venv/bin/activate && python verify_scraping.py\")",
-      "Bash(source:*)",
-      "Bash(find:*)",
-      "Bash(chmod:*)",
-      "Bash(python:*)",
-      "Bash(tee:*)",
-      "Bash(make clean-data:*)",
-      "Bash(docker compose:*)",
-      "Bash(make:*)",
-      "Bash(pkill:*)",
-      "Bash(timeout 60 scrapy crawl:*)",
-      "Bash(scrapy crawl:*)",
-      "Bash(python3:*)",
-      "Bash(bash -c 'source venv/bin/activate && python view_events.py')",
-      "Bash(bash -c 'source venv/bin/activate && python scrape_reviews.py')",
-      "Bash(bash -c 'source venv/bin/activate && pip install -r requirements.txt')",
-      "Bash(bash -c 'source venv/bin/activate && playwright install')",
-      "Bash(bash -c 'source venv/bin/activate && black src tests')"
+      "Bash(bash -c 'source venv/bin/activate && env | grep -i gemini')",
+      "Bash(unset:*)",
+      "Bash(bash -c:*)"
     ],
     "deny": [],
     "ask": []

@@ -177,6 +177,51 @@ class EventNode(Node):
             logger.error(f"Failed to find events by category: {e}")
             return []
 
+    @staticmethod
+    async def get_all_events(limit: int = 100) -> List["EventNode"]:
+        """Get all events with optional limit."""
+        from src.database.connection import db_connection
+
+        try:
+            query = f"MATCH (e:Event) RETURN e LIMIT {limit}"
+            result = db_connection.execute_query(query)
+
+            events = []
+            if result.result_set:
+                for row in result.result_set:
+                    node_data = row[0].properties
+                    events.append(EventNode.from_dict(node_data))
+
+            logger.info(f"Retrieved {len(events)} events from database")
+            return events
+
+        except Exception as e:
+            logger.error(f"Failed to get all events: {e}")
+            return []
+
+    async def get_reviews(self, limit: int = 10) -> List[Any]:
+        """Get reviews for this event."""
+        from src.database.connection import db_connection
+
+        try:
+            query = """
+                MATCH (e:Event {uuid: $uuid})-[:HAS_REVIEW]->(r:Review)
+                RETURN r
+                LIMIT $limit
+            """
+            result = db_connection.execute_query(query, {"uuid": self.uuid, "limit": limit})
+
+            reviews = []
+            if result.result_set:
+                for row in result.result_set:
+                    reviews.append(row[0])
+
+            return reviews
+
+        except Exception as e:
+            logger.warning(f"Failed to get reviews for event {self.title}: {e}")
+            return []
+
     def __repr__(self) -> str:
         """String representation of the event."""
         return f"EventNode(title='{self.title}', date='{self.date}', venue='{self.venue}')"

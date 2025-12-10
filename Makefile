@@ -194,14 +194,44 @@ test:
 	@echo "🧪 Running tests..."
 	@bash -c 'source venv/bin/activate && pytest'
 
+# Helper for CLI
+ask:
+	@bash -c 'source venv/bin/activate && python ask.py'
+
 lint:
 	@echo "🔍 Running linters..."
 	@echo "Checking with Black..."
-	@bash -c 'source venv/bin/activate && black --check src tests'
+	@bash -c 'source venv/bin/activate && black --check src tests ask.py'
 	@echo "Checking with Pylint..."
-	@bash -c 'source venv/bin/activate && pylint src || true'
+	@bash -c 'source venv/bin/activate && pylint src ask.py || true'
 	@echo "Checking with Mypy..."
-	@bash -c 'source venv/bin/activate && mypy src || true'
+	@bash -c 'source venv/bin/activate && mypy src ask.py || true'
+
+
+# Validaton & Testing
+clean-ai:
+	@echo "🧹 Removing AI summaries..."
+	@docker exec eventgraph-falkordb redis-cli GRAPH.QUERY eventgraph "MATCH (s:AISummary) DETACH DELETE s" > /dev/null
+	@echo "✅ AI summaries removed!"
+
+# Default limit covers all events
+LIMIT ?= 10000
+FORCE ?= 
+
+ai-enrich:
+	@echo "🤖 Generating AI summaries (Limit: $(LIMIT))..."
+	@bash -c 'unset GEMINI_API_KEY && source venv/bin/activate && PYTHONPATH=. python src/scripts/enrich_events.py --limit $(LIMIT) $(FORCE)'
+
+ai-enrich-all:
+	@echo "🤖 Regenerating AI summaries for ALL events..."
+	@bash -c 'unset GEMINI_API_KEY && source venv/bin/activate && PYTHONPATH=. python src/scripts/enrich_events.py --all $(FORCE)'
+
+ai-audit:
+	@bash -c 'source venv/bin/activate && PYTHONPATH=. python src/scripts/audit_ai_quality.py'
+
+ai-collections:
+	@echo "🏆 Running AI Tournaments..."
+	@bash -c 'unset GEMINI_API_KEY && source venv/bin/activate && PYTHONPATH=. python src/scripts/run_tournaments.py'
 
 verify:
 	@echo "🔎 Verifying data integrity..."

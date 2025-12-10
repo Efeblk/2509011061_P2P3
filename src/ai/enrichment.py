@@ -1,0 +1,248 @@
+"""Event enrichment with AI-generated summaries."""
+
+import json
+from typing import Optional
+from loguru import logger
+from config.settings import settings
+
+from src.ai.gemini_client import gemini_client
+from src.ai.ollama_client import ollama_client
+from src.models.event import EventNode
+from src.models.ai_summary import AISummaryNode
+
+
+def get_ai_client(use_reasoning: bool = False):
+    """Factory to get the configured AI client."""
+    # Reasoning always uses Gemini (for now, as per plan)
+    if use_reasoning:
+        from src.ai.gemini_client import GeminiClient
+        return GeminiClient(model_name=settings.ai.model_reasoning)
+        
+    # Fast/Standard uses configured provider
+    if settings.ai.provider == "ollama":
+        return ollama_client
+    return gemini_client
+
+
+SUMMARY_PROMPT_TEMPLATE = """
+Analyze this event and create a compact, intelligent summary.
+
+EVENT DETAILS:
+Title: {title}
+Category: {category}
+Description: {description}
+Venue: {venue}
+City: {city}
+Price: ₺{price}
+Rating: {rating}/5 ({review_count} reviews)
+
+{reviews_section}
+
+Create a JSON summary (be concise and honest):
+{{
+    "quality_score": 0-10,
+    "importance": "must-see" | "iconic" | "popular" | "niche" | "seasonal" | "emerging",
+    "value_rating": "excellent" | "good" | "fair" | "expensive",
+    "sentiment_summary": "one sentence capturing review sentiment",
+    "key_highlights": ["highlight1", "highlight2", "highlight3"],
+    "concerns": ["concern1", "concern2"] or null if none,
+    "best_for": ["audience1", "audience2", "audience3"],
+    "vibe": "2-3 words describing atmosphere",
+    "uniqueness": "what makes this special (one line)",
+    "educational_value": true/false,
+    "tourist_attraction": true/false,
+    "bucket_list_worthy": true/false
+}}
+
+Consider:
+- Is this a cultural classic everyone should see? (Don Quixote, Nutcracker)
+- Is it a legendary artist/show? (Metallica, famous opera)
+- Does it offer good value compared to similar events?
+- What do reviews consistently praise or criticize?
+- Who would most enjoy this?
+
+Be honest - if it's mediocre, say so. If reviews are mixed, reflect that.
+"""
+
+
+async def generate_summary(event: EventNode, force: bool = False) -> Optional[AISummaryNode]:
+    """
+    Generate AI summary for an event.
+
+    Args:
+        event: EventNode to summarize
+        force: Process even if low quality
+
+    Returns:
+        AISummaryNode with summary, or None if failed
+    """
+    logger.debug(f"Generating summary for event: {event.title}")
+
+    # Prepare reviews section with AI summary and top reviews
+    reviews_section = ""
+    reviews = []
+    
+    # We need to check for reviews before deciding to skip
+    try:
+        from src.models.event_content import EventContentNode
+        
+        # Get Biletinial's AI summary if available
+        ai_contents = EventContentNode.find_by_event_uuid(event.uuid, content_type="ai_summary")
+
+        if ai_contents:
+            ai_summary = ai_contents[0].text
+            reviews_section = f"BILETINIAL AI SUMMARY:\n{ai_summary}\n\n"
+
+        # Get top 5 user reviews
+        user_reviews = EventContentNode.find_by_event_uuid(event.uuid, content_type="user_review")
+        if user_reviews:
+            review_texts = [f"- {r.text[:200]}" for r in user_reviews[:5]]  # Truncate long reviews
+            reviews_section += f"TOP USER REVIEWS:\n" + "\n".join(review_texts)
+            reviews = user_reviews
+
+    except Exception as e:
+        logger.warning(f"Could not fetch content: {e}")
+
+    # SKIP LOGIC REMOVED BY USER REQUEST (process all events)
+    # has_description = event.description and len(event.description.strip()) > 10
+    # if not has_description and not reviews_section and not force: ...
+
+    # Final check: If no description and no reviews/AI summary, SKIP (unless forced)
+    # COST SAVING: Skip data-poor events by default to save time/money.
+    # User can override this with --force flag.
+    has_description = event.description and len(event.description.strip()) > 10
+    
+    if not has_description and not reviews_section and not force:
+        logger.warning(f"Skipping low-quality event (no description/reviews): {event.title}")
+        return None
+
+    # Build prompt
+    prompt = SUMMARY_PROMPT_TEMPLATE.format(
+        title=event.title or "Unknown",
+        category=event.category or "Uncategorized",
+        description=event.description or "No description",
+        venue=event.venue or "Unknown venue",
+        city=event.city or "Unknown city",
+        price=event.price or 0,
+        rating="N/A",
+        review_count=len(reviews) if reviews else 0,
+        reviews_section=reviews_section or "No reviews available.",
+    )
+
+    # Generate summary
+    client = get_ai_client()
+    summary_data = client.generate_json(prompt, temperature=0.3)
+
+    if not summary_data:
+        logger.error(f"Failed to generate summary for: {event.title}")
+        return None
+
+    # Generate embedding for the event (optional - may hit rate limits)
+    embedding_json = None
+    if settings.ai.enable_embeddings:
+        try:
+            embedding_text = f"{event.title}. {event.description or ''}"
+            embedding_vector = client.embed(embedding_text)
+            embedding_json = json.dumps(embedding_vector) if embedding_vector else None
+        except Exception as e:
+            logger.warning(f"Could not generate embedding (quota/rate limit): {e}")
+    else:
+        logger.debug("Skipping embedding generation (disabled in settings)")
+        # Continue without embedding - we can add it later
+
+    # Create AISummaryNode
+    try:
+        summary = AISummaryNode(
+            event_uuid=event.uuid,
+            quality_score=summary_data.get("quality_score"),
+            importance=summary_data.get("importance"),
+            value_rating=summary_data.get("value_rating"),
+            sentiment_summary=summary_data.get("sentiment_summary"),
+            key_highlights=json.dumps(summary_data.get("key_highlights") or []),
+            concerns=json.dumps(summary_data.get("concerns") or []),
+            best_for=",".join(summary_data.get("best_for") or []),
+            vibe=summary_data.get("vibe"),
+            uniqueness=summary_data.get("uniqueness"),
+            educational_value=summary_data.get("educational_value", False),
+            tourist_attraction=summary_data.get("tourist_attraction", False),
+            bucket_list_worthy=summary_data.get("bucket_list_worthy", False),
+            embedding=embedding_json,
+            summary_json=json.dumps(summary_data),
+            model_version="gemini-1.5-flash",
+            prompt_version="v1",
+        )
+
+        # Save to database
+        saved = await summary.save()
+
+        if saved:
+            logger.debug(f"✓ Summary created for: {event.title}")
+            return saved
+        else:
+            logger.error(f"Failed to save summary for: {event.title}")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error creating summary node: {e}")
+        return None
+
+
+async def batch_generate_summaries(
+    events: list[EventNode], 
+    delay: float = 1.0, 
+    force: bool = False,
+    overwrite: bool = False
+) -> dict:
+    """
+    Generate summaries for multiple events with rate limiting.
+
+    Args:
+        events: List of EventNode objects
+        delay: Delay between API calls in seconds
+        force: If True, process even if low quality
+        overwrite: If True, regenerate existing summaries
+    """
+    import asyncio
+    from tqdm import tqdm
+
+    results = {"success": 0, "failed": 0, "skipped": 0}
+
+    # Limit concurrency for local LLM (or API rate limits)
+    # For Ollama on Mac, 2-4 concurrent requests is usually safe.
+    MAX_CONCURRENCY = 4 if settings.ai.provider == "ollama" else 10
+    semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
+
+    async def process_event(event):
+        async with semaphore:
+            # Update description (approximate since parallel)
+            # pbar.set_description(f"🤖 Processing: {event.title[:30]}...")
+
+            # Check existing
+            if not overwrite:
+                existing = await AISummaryNode.get_by_event_uuid(event.uuid)
+                if existing:
+                    results["skipped"] += 1
+                    pbar.update(1)
+                    return
+
+            # Generate
+            summary = await generate_summary(event, force=force)
+            if summary:
+                results["success"] += 1
+            else:
+                results["failed"] += 1
+            
+            pbar.update(1)
+            pbar.set_postfix(success=results["success"], failed=results["failed"])
+
+    # Create tasks
+    tasks = [process_event(e) for e in events]
+    
+    # Run all
+    with tqdm(total=len(events), desc="🤖 Enriching Events", unit="event", dynamic_ncols=True) as pbar:
+        await asyncio.gather(*tasks)
+
+    logger.info(
+        f"Batch complete: {results['success']} success, {results['failed']} failed, {results['skipped']} skipped"
+    )
+    return results
