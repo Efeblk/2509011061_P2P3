@@ -400,10 +400,18 @@ class BiletinialSpider(BaseEventSpider):
                      self.logger.warning(f"⚠️ Could not extract price for '{response.meta.get('title')}'")
                  else:
                       self.logger.warning(f"⚠️ Found Istanbul container but no price inside.")
+                      # DEBUG: Dump HTML to see what's wrong
+                      try:
+                          html_dump = await istanbul_container.inner_html()
+                          self.logger.error(f"HTML DUMP for {response.meta.get('title')}: {html_dump[:500]}...")
+                      except Exception as e:
+                          self.logger.error(f"Failed to dump HTML: {e}")
 
                  # Fallback for Cinema (Sinema) events
                  # Cinema prices are hidden behind interactions, so we assume a default average
-                 event_type = response.meta.get("event_type", "Etkinlik")
+                 # Fallback for Cinema (Sinema) events
+                 # Cinema prices are hidden behind interactions, so we assume a default average
+                 event_type = response.meta.get("event_type") or "Etkinlik"
                  if "sinema" in event_type.lower() or "sinema" in response.url.lower():
                      self.logger.info("🎬 Cinema detected: Applying default price of 250.0 TL")
                      final_price = 250.0

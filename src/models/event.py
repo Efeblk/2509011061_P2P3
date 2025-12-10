@@ -47,7 +47,7 @@ class EventNode(Node):
             "date": self.date or "",
             "venue": self.venue or "",
             "city": self.city or "",
-            "price": self.price or 0.0,
+            "price": self.price,
             "price_range": self.price_range or "",
             "url": self.url or "",
             "image_url": self.image_url or "",

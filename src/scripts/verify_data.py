@@ -78,6 +78,35 @@ def verify_data():
     if missing_url > 0:
         issues.append(f"{missing_url} events missing URL")
 
+    # 2.5 Price Quality Check
+    print("\n💰 PRICE INTEGRITY CHECK")
+    print("-" * 80)
+    
+    # Count events with valid prices
+    priced_events = g.query("MATCH (e:Event) WHERE e.price IS NOT NULL RETURN count(e)").result_set[0][0]
+    
+    # Count missing prices
+    missing_price = g.query("MATCH (e:Event) WHERE e.price IS NULL RETURN count(e)").result_set[0][0]
+    
+    # Count free/zero priced (could be issue or genuinely free)
+    zero_price = g.query("MATCH (e:Event) WHERE e.price = 0 OR e.price = 0.0 RETURN count(e)").result_set[0][0]
+    
+    # Count default Cinema prices (250.0)
+    cinema_default = g.query("MATCH (e:Event) WHERE e.price = 250.0 RETURN count(e)").result_set[0][0]
+
+    print(f"Events with Price: {priced_events}")
+    print(f"Events missing Price (Sold Out?): {missing_price}")
+    print(f"Free Events (0.0): {zero_price}")
+    print(f"Cinema Defaults (250.0): {cinema_default}")
+
+    if priced_events == 0 and total > 0:
+        print("⚠️  CRITICAL: No prices found at all!")
+        issues.append("No prices extracted (Critical)")
+    elif missing_price > total * 0.5:
+        print("⚠️  Warning: More than 50% of events have no price.")
+        # Not adding to issues as failure, just warning
+
+
     # 3. Data Quality Checks
     print("\n🔍 DATA QUALITY CHECKS")
     print("-" * 80)
