@@ -376,8 +376,39 @@ class BiletinialSpider(BaseEventSpider):
                         if json_str:
                             import json
                             data = json.loads(json_str)
-                            # Logic matches existing implementation...
-                            pass
+                            prices = []
+                            # Format could be Dict[ID, Dict] or Dict[ID, float] or List[Dict]
+                            if isinstance(data, dict):
+                                values = data.values()
+                            elif isinstance(data, list):
+                                values = data
+                            else:
+                                values = []
+
+                            for val in values:
+                                try:
+                                    # It might be a simple number or a dict
+                                    p = None
+                                    if isinstance(val, (int, float)):
+                                        p = float(val)
+                                    elif isinstance(val, dict):
+                                        # Look for likely keys
+                                        for key in ["price", "satis_fiyati", "fiyat", "amount", "tutar"]:
+                                            if key in val:
+                                                p = float(str(val[key]).replace(",", "."))
+                                                break
+                                    elif isinstance(val, str):
+                                        # "672,00"
+                                        p = float(val.replace(".", "").replace(",", "."))
+                                    
+                                    if p is not None and p > 0:
+                                        prices.append(p)
+                                except Exception:
+                                    continue
+
+                            if prices:
+                                final_price = min(prices)
+                                self.logger.info(f"✓ Extracted min price from JSON: {final_price}")
                 except Exception as e:
                     self.logger.debug(f"JSON price extraction failed: {e}")
 

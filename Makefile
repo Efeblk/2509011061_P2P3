@@ -146,15 +146,23 @@ down:
 	@echo "✅ All services stopped"
 
 scrape:
-	@echo "🕷️  Starting scrapers for all sources..."
-	@echo ""
-	@echo "📍 Scraping Biletix..."
-	scrapy crawl biletix
-	@echo ""
-	@echo "📍 Scraping Biletinial..."
-	scrapy crawl biletinial
-	@echo ""
-	@echo "✅ All scraping complete!"
+	@echo "🕷️  Running Scrapers (Biletix & Biletinial)..."
+	@if [ -n "$(LIMIT)" ]; then \
+		echo "🔍 Limit set to $(LIMIT) events per spider"; \
+		scrapy crawl biletix -a limit=$(LIMIT) & \
+		scrapy crawl biletinial -a limit=$(LIMIT) & \
+		wait; \
+	else \
+		scrapy crawl biletix & \
+		scrapy crawl biletinial & \
+		wait; \
+	fi
+	@echo "✅ Scraping complete!"
+
+scrape-price:
+	@echo "💰 Updating missing prices..."
+	@scrapy crawl biletinial_price_updater
+	@echo "✅ Price update complete!"
 	@echo ""
 	@echo "View results with: make view"
 

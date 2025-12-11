@@ -69,3 +69,5 @@ biletinial_page_content.html
 scrapy_page_content.html
 coverage.xml
 dump.rdb
+
+.claude/
