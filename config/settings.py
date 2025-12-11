@@ -87,9 +87,10 @@ class AISettings(BaseSettings):
     max_retries: int = Field(default=3, alias="AI_MAX_RETRIES")
     cache_enabled: bool = Field(default=True, alias="AI_CACHE_ENABLED")
     enable_embeddings: bool = Field(default=False, alias="AI_ENABLE_EMBEDDINGS")
+    concurrency: int = Field(default=8, alias="AI_CONCURRENCY")
     
     # Provider selection: "gemini" or "ollama"
-    provider: str = Field(default="gemini", alias="AI_PROVIDER")
+    provider: str = Field(default="gemini", alias="AI_LOCAL")
 
     # Models
     model_fast: str = Field(default="llama3.2", alias="AI_MODEL_FAST")

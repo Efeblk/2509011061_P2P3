@@ -215,8 +215,7 @@ lint:
 # Validaton & Testing
 clean-ai:
 	@echo "🧹 Removing AI summaries..."
-	@docker exec eventgraph-falkordb redis-cli GRAPH.QUERY eventgraph "MATCH (s:AISummary) DETACH DELETE s" > /dev/null
-	@echo "✅ AI summaries removed!"
+	@export PYTHONPATH=. && venv/bin/python src/scripts/clean_ai.py
 
 # Default limit covers all events
 LIMIT ?= 10000
@@ -224,18 +223,18 @@ FORCE ?=
 
 ai-enrich:
 	@echo "🤖 Generating AI summaries (Limit: $(LIMIT))..."
-	@unset GEMINI_API_KEY && export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py --limit $(LIMIT) $(FORCE)
+	@export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py --limit $(LIMIT) $(FORCE)
 
 ai-enrich-all:
 	@echo "🤖 Regenerating AI summaries for ALL events..."
-	@unset GEMINI_API_KEY && export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py --all $(FORCE)
+	@export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py --all $(FORCE)
 
-ai-audit:
+ai-view:
 	@export PYTHONPATH=. && venv/bin/python src/scripts/audit_ai_quality.py
 
 ai-collections:
 	@echo "🏆 Running AI Tournaments..."
-	@unset GEMINI_API_KEY && export PYTHONPATH=. && venv/bin/python src/scripts/run_tournaments.py
+	@export PYTHONPATH=. && venv/bin/python src/scripts/run_tournaments.py
 
 verify:
 	@echo "🔎 Verifying data integrity..."

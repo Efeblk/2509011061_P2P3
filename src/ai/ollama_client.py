@@ -19,6 +19,22 @@ class OllamaClient:
         self.base_url = settings.ollama.base_url
         self.model = settings.ollama.model
 
+        # Validate Ollama connection on startup
+        try:
+            response = requests.get(f"{self.base_url}/api/tags", timeout=5)
+            response.raise_for_status()
+            logger.debug(f"Successfully connected to Ollama at {self.base_url}")
+        except requests.exceptions.ConnectionError:
+            raise ConnectionError(
+                f"Cannot connect to Ollama at {self.base_url}.\n"
+                f"Please ensure Ollama is running:\n"
+                f"  - Install: https://ollama.ai/download\n"
+                f"  - Run: ollama serve\n"
+                f"  - Pull model: ollama pull {self.model}"
+            )
+        except Exception as e:
+            logger.warning(f"Could not verify Ollama connection: {e}")
+
     def embed(self, text: str) -> Optional[list[float]]:
         """
         Generate embedding vector for text using Ollama.
@@ -46,7 +62,7 @@ class OllamaClient:
             logger.error(f"Error generating embedding with Ollama: {e}")
             return None
 
-    def generate(self, prompt: str, temperature: float = 0.7) -> Optional[str]:
+    async def generate(self, prompt: str, temperature: float = 0.7) -> Optional[str]:
         """
         Generate text completion.
 
@@ -57,9 +73,9 @@ class OllamaClient:
         Returns:
             Generated text or None if failed
         """
-        return self._generate_request(prompt, temperature=temperature, format=None)
+        return await self._generate_request(prompt, temperature=temperature, format=None)
 
-    def generate_json(self, prompt: str, temperature: float = 0.3) -> Optional[dict]:
+    async def generate_json(self, prompt: str, temperature: float = 0.3) -> Optional[dict]:
         """
         Generate JSON response.
 
@@ -75,7 +91,7 @@ class OllamaClient:
         if "json" not in prompt.lower():
             json_prompt += "\nRespond strictly with VALID JSON."
 
-        result = self._generate_request(json_prompt, temperature=temperature, format="json")
+        result = await self._generate_request(json_prompt, temperature=temperature, format="json")
 
         if not result:
             return None
@@ -86,8 +102,10 @@ class OllamaClient:
             logger.error(f"Failed to parse JSON from Ollama: {result[:100]}...")
             return None
 
-    def _generate_request(self, prompt: str, temperature: float, format: Optional[str] = None) -> Optional[str]:
+    async def _generate_request(self, prompt: str, temperature: float, format: Optional[str] = None) -> Optional[str]:
         """Internal method for generation request."""
+        import asyncio
+        
         try:
             url = f"{self.base_url}/api/generate"
             payload = {
@@ -96,21 +114,45 @@ class OllamaClient:
                 "stream": False,
                 "options": {
                     "temperature": temperature,
-                    "num_ctx": 4096  # Reasonable context window
+                    "num_ctx": 2048  # Reduced from 4096 for speed/memory
                 }
             }
             
             if format == "json":
                 payload["format"] = "json"
 
-            response = requests.post(url, json=payload, timeout=120)  # Local LLMs can be slow
+            # Run blocking request in thread pool
+            def make_request():
+                return requests.post(url, json=payload, timeout=120)
+
+            response = await asyncio.to_thread(make_request)
             response.raise_for_status()
             
             return response.json().get("response")
 
+        except requests.exceptions.ConnectionError:
+            logger.error(f"Cannot connect to Ollama at {self.base_url}. Is Ollama running?")
+            return None
+        except requests.exceptions.Timeout:
+            logger.error(f"Ollama request timed out. The model might be too slow or the prompt too long.")
+            return None
         except Exception as e:
             logger.error(f"Error generating with Ollama: {e}")
             return None
 
-# Global instance
-ollama_client = OllamaClient()
+# Lazy-initialized global client instance
+class _OllamaClientProxy:
+    """Proxy to lazy-load OllamaClient only when actually used."""
+
+    def __init__(self):
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            self._client = OllamaClient()
+        return self._client
+
+    def __getattr__(self, name):
+        return getattr(self._get_client(), name)
+
+ollama_client = _OllamaClientProxy()

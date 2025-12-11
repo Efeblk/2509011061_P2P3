@@ -55,9 +55,23 @@ async def main():
     logger.info("📊 ENRICHMENT COMPLETE")
     logger.info("=" * 50)
     logger.info(f"✓ Success: {results['success']}")
-    logger.info(f"✗ Failed: {results['failed']}")
-    logger.info(f"⊘ Skipped: {results['skipped']}")
-    logger.info(f"Total: {sum(results.values())}")
+    logger.info(f"✗ Failed (API errors): {results['failed']}")
+    logger.info(f"⊘ Already had summaries: {results['skipped']}")
+    logger.info(f"⊘ Skipped (low quality, no content): {results.get('skipped_low_quality', 0)}")
+    logger.info(f"Total processed: {sum(results.values())}")
+
+    if results['failed'] > 0:
+        logger.warning("\n⚠️  Some events failed to generate summaries.")
+        logger.warning("Common causes:")
+        logger.warning("  1. Ollama not running or not accessible")
+        logger.warning("  2. Model (llama3.2) not installed")
+        logger.warning("  3. Ollama connection timeout or network issues")
+        logger.warning("\nTroubleshooting:")
+        logger.warning("  - Check Ollama status: ollama list")
+        logger.warning("  - Start Ollama: ollama serve")
+        logger.warning("  - Pull model: ollama pull llama3.2")
+        logger.warning("\nTo process low-quality events (no description/reviews), use:")
+        logger.warning("  make ai-enrich FORCE=--force")
 
 
 if __name__ == "__main__":

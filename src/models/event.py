@@ -27,6 +27,7 @@ class EventNode(Node):
     image_url: Optional[str] = None
     category: Optional[str] = None  # e.g., "Concert", "Theater", "Stand-up"
     source: Optional[str] = None  # e.g., "biletix", "biletino"
+    category_prices: Optional[str] = None  # JSON string of category prices
 
     # AI analysis fields (to be filled later)
     ai_score: Optional[float] = None
@@ -53,6 +54,7 @@ class EventNode(Node):
             "image_url": self.image_url or "",
             "category": self.category or "",
             "source": self.source or "",
+            "category_prices": self.category_prices or "",
             "ai_score": self.ai_score or 0.0,
             "ai_verdict": self.ai_verdict or "",
             "ai_reasoning": self.ai_reasoning or "",

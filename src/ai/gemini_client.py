@@ -18,7 +18,16 @@ class GeminiClient:
 
     def __init__(self, model_name: Optional[str] = None):
         """Initialize Gemini client."""
-        genai.configure(api_key=settings.gemini.api_key)
+        api_key = settings.gemini.api_key
+
+        # Validate API key
+        if not api_key or api_key == "your_gemini_api_key_here":
+            raise ValueError(
+                "Invalid Gemini API key. Please set GEMINI_API_KEY in your .env file.\n"
+                "Get your API key from: https://makersuite.google.com/app/apikey"
+            )
+
+        genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(model_name or settings.gemini.model)
         self._cache = {}  # Simple in-memory cache
 
@@ -62,7 +71,7 @@ class GeminiClient:
             logger.error(f"Error generating embedding: {e}")
             return None
 
-    def generate(self, prompt: str, temperature: float = 0.7, use_cache: bool = True, retry: int = 3) -> Optional[str]:
+    async def generate(self, prompt: str, temperature: float = 0.7, use_cache: bool = True, retry: int = 3) -> Optional[str]:
         """
         Generate text completion.
 
@@ -75,6 +84,8 @@ class GeminiClient:
         Returns:
             Generated text or None if failed
         """
+        import asyncio
+        
         cache_key = self._get_cache_key(prompt, f"gen_{temperature}")
 
         # Check cache
@@ -85,11 +96,13 @@ class GeminiClient:
         # Generate with retry
         for attempt in range(retry):
             try:
-                response = self.model.generate_content(
-                    prompt,
-                    generation_config=genai.types.GenerationConfig(temperature=temperature),
-                )
+                def make_request():
+                    return self.model.generate_content(
+                        prompt,
+                        generation_config=genai.types.GenerationConfig(temperature=temperature),
+                    )
 
+                response = await asyncio.to_thread(make_request)
                 result = response.text
 
                 # Cache result
@@ -100,20 +113,27 @@ class GeminiClient:
                 return result
 
             except Exception as e:
+                error_msg = str(e).lower()
+
+                # Check for API key issues
+                if "api" in error_msg and ("key" in error_msg or "auth" in error_msg or "invalid" in error_msg):
+                    logger.error(f"API authentication failed. Please check your GEMINI_API_KEY in .env file: {e}")
+                    return None
+
                 logger.warning(f"Generation attempt {attempt + 1} failed: {e}")
 
                 if attempt < retry - 1:
                     # Exponential backoff
                     sleep_time = 2**attempt
                     logger.info(f"Retrying in {sleep_time}s...")
-                    time.sleep(sleep_time)
+                    await asyncio.sleep(sleep_time)
                 else:
                     logger.error(f"All retry attempts failed: {e}")
                     return None
 
         return None
 
-    def generate_json(self, prompt: str, temperature: float = 0.3, use_cache: bool = True) -> Optional[dict]:
+    async def generate_json(self, prompt: str, temperature: float = 0.3, use_cache: bool = True) -> Optional[dict]:
         """
         Generate JSON response.
 
@@ -125,7 +145,7 @@ class GeminiClient:
         Returns:
             Parsed JSON dict or None if failed
         """
-        result = self.generate(prompt, temperature=temperature, use_cache=use_cache)
+        result = await self.generate(prompt, temperature=temperature, use_cache=use_cache)
 
         if not result:
             return None
@@ -149,5 +169,19 @@ class GeminiClient:
             return None
 
 
-# Global client instance
-gemini_client = GeminiClient()
+# Lazy-initialized global client instance
+class _GeminiClientProxy:
+    """Proxy to lazy-load GeminiClient only when actually used."""
+
+    def __init__(self):
+        self._client = None
+
+    def _get_client(self):
+        if self._client is None:
+            self._client = GeminiClient()
+        return self._client
+
+    def __getattr__(self, name):
+        return getattr(self._get_client(), name)
+
+gemini_client = _GeminiClientProxy()

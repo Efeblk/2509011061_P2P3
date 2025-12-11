@@ -72,8 +72,30 @@ async def main():
         for imp, count in importance_counts.most_common():
             print(f"   - {imp}: {count}")
 
-        # 4. Progress & Forecast
-        # Count total events to calculate backlog
+        # 3. Pricing & Value Analysis
+        query_value = """
+        MATCH (s:AISummary)<-[:HAS_AI_SUMMARY]-(e:Event)
+        RETURN s.value_rating, e.category_prices
+        """
+        res_value = db_connection.graph.query(query_value).result_set
+        
+        value_counts = Counter()
+        priced_events = 0
+        
+        for row in res_value:
+            rating = row[0] or "Unknown"
+            prices = row[1]
+            
+            value_counts[rating] += 1
+            if prices and len(prices) > 5:  # Basic check if JSON/string is not empty
+                priced_events += 1
+                
+        print("\n💰 Value & Pricing:")
+        print(f"   Events with Category Prices: {priced_events}/{total} ({priced_events/total*100:.1f}%)")
+        print("   Value Ratings:")
+        for rating, count in value_counts.most_common():
+            print(f"   - {rating}: {count}")
+
         # 4. Progress & Forecast
         # Detailed backlog analysis
         # Find events WITHOUT summary to classify them
@@ -90,7 +112,7 @@ async def main():
         res_pending = db_connection.graph.query(query_pending).result_set
         
         pending_total = len(res_pending)
-        total = total_events - pending_total # Summarized
+        total_summarized = total_events - pending_total
         
         # Analyze pending backlog
         actionable_pending = 0
@@ -104,36 +126,36 @@ async def main():
             else:
                 likely_skipped += 1
 
-        progress = (total / total_events) * 100 if total_events > 0 else 0
+        progress = (total_summarized / total_events) * 100 if total_events > 0 else 0
 
-        print(f"\n🚀 Progress: {total}/{total_events} ({progress:.1f}%)")
+        print(f"\n🚀 Progress: {total_summarized}/{total_events} ({progress:.1f}%)")
         print(f"   Shape of Backlog ({pending_total} pending):")
         print(f"   ✅ Actionable:     {actionable_pending} (Ready to enrich)")
         print(f"   🚫 Likely Skipped: {likely_skipped} (Empty description, skipped in fast mode)")
         
         if actionable_pending > 0:
-            # Estimates
-            # Cloud (Gemini): ~1.5s/event (parallel)
-            # Local (Ollama): ~7s/event (parallel on Mac)
-            est_cloud = actionable_pending * 1.5 / 60  # minutes
-            est_local = actionable_pending * 7.0 / 60  # minutes
+            # Estimates (Updated for Parallel Processing)
+            # Cloud (Gemini): ~0.2s/event effective (batch/parallel)
+            # Local (Ollama): ~1.5s/event effective (8x parallel)
+            est_cloud = actionable_pending * 0.2 / 60  # minutes
+            est_local = actionable_pending * 1.5 / 60  # minutes
             
-            print(f"\n⏱️  Est. Time for Actionable Events:")
-            print(f"   - Cloud (Gemini): ~{est_cloud:.0f} mins ({est_cloud/60:.1f} hours)")
-            print(f"   - Local (Ollama): ~{est_local:.0f} mins ({est_local/60:.1f} hours)")
+            print(f"\n⏱️  Est. Time for Actionable Events (Parallel):")
+            print(f"   - Cloud (Gemini): ~{est_cloud:.1f} mins")
+            print(f"   - Local (Ollama): ~{est_local:.1f} mins")
         elif likely_skipped > 0:
-            est_cloud = likely_skipped * 1.5 / 60
-            est_local = likely_skipped * 7.0 / 60
+            est_cloud = likely_skipped * 0.2 / 60
+            est_local = likely_skipped * 1.5 / 60
             
             print(f"\n⏱️  Est. Time to FORCE Process (Likely Skipped):")
-            print(f"   - Cloud (Gemini): ~{est_cloud:.0f} mins ({est_cloud/60:.1f} hours)")
-            print(f"   - Local (Ollama): ~{est_local:.0f} mins ({est_local/60:.1f} hours)")
+            print(f"   - Cloud (Gemini): ~{est_cloud:.1f} mins")
+            print(f"   - Local (Ollama): ~{est_local:.1f} mins")
         else:
              print("\n🎉 All Done!")
 
-        # 3. Recommendations
+        # 5. Recommendations
         print("\n💡 Recommendations:")
-        if low_quality_count / total > 0.5:
+        if low_quality_count / (total or 1) > 0.5:
             print("   ⚠️  High rate of low-quality summaries.")
             print("      Consider filtering scrapers or improving source data quality.")
         else:

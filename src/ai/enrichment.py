@@ -34,6 +34,7 @@ Description: {description}
 Venue: {venue}
 City: {city}
 Price: ₺{price}
+Category Prices: {category_prices}
 Rating: {rating}/5 ({review_count} reviews)
 
 {reviews_section}
@@ -93,10 +94,12 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
             ai_summary = ai_contents[0].text
             reviews_section = f"BILETINIAL AI SUMMARY:\n{ai_summary}\n\n"
 
-        # Get top 5 user reviews
+        # Get top 5 user reviews for comprehensive analysis
         user_reviews = EventContentNode.find_by_event_uuid(event.uuid, content_type="user_review")
         if user_reviews:
-            review_texts = [f"- {r.text[:200]}" for r in user_reviews[:5]]  # Truncate long reviews
+            # Use up to 500 chars per review for comprehensive quality analysis
+            # This allows capturing full user sentiment and detailed feedback
+            review_texts = [f"- {r.text[:500]}..." if len(r.text) > 500 else f"- {r.text}" for r in user_reviews[:5]]
             reviews_section += f"TOP USER REVIEWS:\n" + "\n".join(review_texts)
             reviews = user_reviews
 
@@ -111,19 +114,20 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
     # COST SAVING: Skip data-poor events by default to save time/money.
     # User can override this with --force flag.
     has_description = event.description and len(event.description.strip()) > 10
-    
+
     if not has_description and not reviews_section and not force:
-        logger.warning(f"Skipping low-quality event (no description/reviews): {event.title}")
+        logger.debug(f"Skipping low-quality event (no description/reviews): {event.title}")
         return None
 
     # Build prompt
     prompt = SUMMARY_PROMPT_TEMPLATE.format(
         title=event.title or "Unknown",
         category=event.category or "Uncategorized",
-        description=event.description or "No description",
+        description=(event.description[:1000] + "...") if event.description else "No description",
         venue=event.venue or "Unknown venue",
         city=event.city or "Unknown city",
         price=event.price or 0,
+        category_prices=event.category_prices or "Not available",
         rating="N/A",
         review_count=len(reviews) if reviews else 0,
         reviews_section=reviews_section or "No reviews available.",
@@ -131,7 +135,7 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
 
     # Generate summary
     client = get_ai_client()
-    summary_data = client.generate_json(prompt, temperature=0.3)
+    summary_data = await client.generate_json(prompt, temperature=0.3)
 
     if not summary_data:
         logger.error(f"Failed to generate summary for: {event.title}")
@@ -188,8 +192,8 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
 
 
 async def batch_generate_summaries(
-    events: list[EventNode], 
-    delay: float = 1.0, 
+    events: list[EventNode],
+    delay: float = 1.0,
     force: bool = False,
     overwrite: bool = False
 ) -> dict:
@@ -205,11 +209,11 @@ async def batch_generate_summaries(
     import asyncio
     from tqdm import tqdm
 
-    results = {"success": 0, "failed": 0, "skipped": 0}
+    results = {"success": 0, "failed": 0, "skipped": 0, "skipped_low_quality": 0}
 
     # Limit concurrency for local LLM (or API rate limits)
-    # For Ollama on Mac, 2-4 concurrent requests is usually safe.
-    MAX_CONCURRENCY = 4 if settings.ai.provider == "ollama" else 10
+    # Configurable via AI_CONCURRENCY in .env
+    MAX_CONCURRENCY = settings.ai.concurrency
     semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
 
     async def process_event(event):
@@ -229,11 +233,24 @@ async def batch_generate_summaries(
             summary = await generate_summary(event, force=force)
             if summary:
                 results["success"] += 1
-            else:
-                results["failed"] += 1
-            
+            elif summary is None:
+                # Check if it was skipped due to low quality
+                has_description = event.description and len(event.description.strip()) > 10
+                try:
+                    from src.models.event_content import EventContentNode
+                    ai_contents = EventContentNode.find_by_event_uuid(event.uuid, content_type="ai_summary")
+                    user_reviews = EventContentNode.find_by_event_uuid(event.uuid, content_type="user_review")
+                    has_content = bool(ai_contents or user_reviews)
+                except:
+                    has_content = False
+
+                if not has_description and not has_content and not force:
+                    results["skipped_low_quality"] += 1
+                else:
+                    results["failed"] += 1
+
             pbar.update(1)
-            pbar.set_postfix(success=results["success"], failed=results["failed"])
+            pbar.set_postfix(success=results["success"], failed=results["failed"], low_quality=results["skipped_low_quality"])
 
     # Create tasks
     tasks = [process_event(e) for e in events]
@@ -243,6 +260,7 @@ async def batch_generate_summaries(
         await asyncio.gather(*tasks)
 
     logger.info(
-        f"Batch complete: {results['success']} success, {results['failed']} failed, {results['skipped']} skipped"
+        f"Batch complete: {results['success']} success, {results['failed']} failed, "
+        f"{results['skipped']} already had summaries, {results['skipped_low_quality']} skipped (low quality)"
     )
     return results
