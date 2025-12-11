@@ -1,9 +1,12 @@
 # Makefile for EventGraph project
 
-.PHONY: help install setup clean clean-data fclean docker-up docker-down up down scrape scrape-reviews view db-shell
+.PHONY: help install setup clean clean-data fclean docker-up docker-down up down scrape view db-shell
 
 # Python command (use python if in venv, otherwise python3)
 PYTHON := $(shell command -v python 2> /dev/null || echo python3)
+
+# Docker Compose command (check for "docker compose" first, then "docker-compose")
+DOCKER_COMPOSE := $(shell docker compose version > /dev/null 2>&1 && echo "docker compose" || echo "docker-compose")
 
 # Default target
 help:
@@ -28,22 +31,23 @@ help:
 
 # Installation
 install:
-	pip install -r requirements.txt
-	playwright install
+	venv/bin/pip install -r requirements.txt
+	venv/bin/playwright install
+	venv/bin/playwright install-deps
 
 # Full setup
 setup: install
 	@if [ ! -f .env ]; then cp .env.example .env; echo "Created .env file"; fi
 	@mkdir -p logs
-	docker compose up -d
+	$(DOCKER_COMPOSE) up -d
 	@echo "Setup complete!"
 
 # Docker
 docker-up:
-	docker compose up -d
+	$(DOCKER_COMPOSE) up -d
 
 docker-down:
-	docker compose down
+	$(DOCKER_COMPOSE) down
 
 # Clean
 clean:
@@ -79,7 +83,7 @@ fclean: clean
 	echo; \
 	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
 		echo "Stopping Docker containers..."; \
-		docker compose down -v 2>/dev/null || true; \
+		$(DOCKER_COMPOSE) down -v 2>/dev/null || true; \
 		echo "Removing virtual environment..."; \
 		rm -rf venv/; \
 		echo "Removing logs..."; \
@@ -124,7 +128,7 @@ up:
 		exit 1; \
 	fi
 	@echo "📋 Step 1: Starting FalkorDB..."
-	docker compose up -d falkordb
+	$(DOCKER_COMPOSE) up -d falkordb
 	@echo "⏳ Waiting for database to be ready..."
 	@sleep 5
 	@echo ""
@@ -142,26 +146,26 @@ up:
 
 down:
 	@echo "🛑 Stopping EventGraph..."
-	docker compose down
+	$(DOCKER_COMPOSE) down
 	@echo "✅ All services stopped"
 
 scrape:
 	@echo "🕷️  Running Scrapers (Biletix & Biletinial)..."
 	@if [ -n "$(LIMIT)" ]; then \
 		echo "🔍 Limit set to $(LIMIT) events per spider"; \
-		scrapy crawl biletix -a limit=$(LIMIT) & \
-		scrapy crawl biletinial -a limit=$(LIMIT) & \
+		# venv/bin/scrapy crawl biletix -a limit=$(LIMIT) & \
+		venv/bin/scrapy crawl biletinial -a limit=$(LIMIT) & \
 		wait; \
 	else \
-		scrapy crawl biletix & \
-		scrapy crawl biletinial & \
+		# venv/bin/scrapy crawl biletix & \
+		venv/bin/scrapy crawl biletinial & \
 		wait; \
 	fi
 	@echo "✅ Scraping complete!"
 
 scrape-price:
 	@echo "💰 Updating missing prices..."
-	@scrapy crawl biletinial_price_updater
+	@venv/bin/scrapy crawl biletinial_price_updater
 	@echo "✅ Price update complete!"
 	@echo ""
 	@echo "View results with: make view"
@@ -169,7 +173,7 @@ scrape-price:
 scrape-biletix:
 	@echo "🕷️  Starting Biletix scraper..."
 	@echo ""
-	scrapy crawl biletix
+	venv/bin/scrapy crawl biletix
 	@echo ""
 	@echo "✅ Biletix scraping complete!"
 	@echo ""
@@ -178,7 +182,7 @@ scrape-biletix:
 scrape-biletinial:
 	@echo "🕷️  Starting Biletinial scraper..."
 	@echo ""
-	scrapy crawl biletinial
+	venv/bin/scrapy crawl biletinial
 	@echo ""
 	@echo "✅ Biletinial scraping complete!"
 	@echo ""
@@ -187,25 +191,25 @@ scrape-biletinial:
 view:
 	@echo "📊 Events in database:"
 	@echo ""
-	@bash -c 'source venv/bin/activate && python src/scripts/view_events.py'
+	@venv/bin/python src/scripts/view_events.py
 
 # Validation & Testing
 test:
 	@echo "🧪 Running tests..."
-	@bash -c 'source venv/bin/activate && pytest'
+	@venv/bin/pytest
 
 # Helper for CLI
 ask:
-	@bash -c 'source venv/bin/activate && python ask.py'
+	@venv/bin/python ask.py
 
 lint:
 	@echo "🔍 Running linters..."
 	@echo "Checking with Black..."
-	@bash -c 'source venv/bin/activate && black --check src tests ask.py'
+	@venv/bin/black --check src tests ask.py
 	@echo "Checking with Pylint..."
-	@bash -c 'source venv/bin/activate && pylint src ask.py || true'
+	@venv/bin/pylint src ask.py || true
 	@echo "Checking with Mypy..."
-	@bash -c 'source venv/bin/activate && mypy src ask.py || true'
+	@venv/bin/mypy src ask.py || true
 
 
 # Validaton & Testing
@@ -220,19 +224,19 @@ FORCE ?=
 
 ai-enrich:
 	@echo "🤖 Generating AI summaries (Limit: $(LIMIT))..."
-	@bash -c 'unset GEMINI_API_KEY && source venv/bin/activate && PYTHONPATH=. python src/scripts/enrich_events.py --limit $(LIMIT) $(FORCE)'
+	@unset GEMINI_API_KEY && export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py --limit $(LIMIT) $(FORCE)
 
 ai-enrich-all:
 	@echo "🤖 Regenerating AI summaries for ALL events..."
-	@bash -c 'unset GEMINI_API_KEY && source venv/bin/activate && PYTHONPATH=. python src/scripts/enrich_events.py --all $(FORCE)'
+	@unset GEMINI_API_KEY && export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py --all $(FORCE)
 
 ai-audit:
-	@bash -c 'source venv/bin/activate && PYTHONPATH=. python src/scripts/audit_ai_quality.py'
+	@export PYTHONPATH=. && venv/bin/python src/scripts/audit_ai_quality.py
 
 ai-collections:
 	@echo "🏆 Running AI Tournaments..."
-	@bash -c 'unset GEMINI_API_KEY && source venv/bin/activate && PYTHONPATH=. python src/scripts/run_tournaments.py'
+	@unset GEMINI_API_KEY && export PYTHONPATH=. && venv/bin/python src/scripts/run_tournaments.py
 
 verify:
 	@echo "🔎 Verifying data integrity..."
-	@bash -c 'source venv/bin/activate && python src/scripts/verify_data.py'
+	@venv/bin/python src/scripts/verify_data.py

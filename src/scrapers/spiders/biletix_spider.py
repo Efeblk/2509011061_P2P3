@@ -24,7 +24,8 @@ class BiletixSpider(BaseEventSpider):
     custom_settings = {
         **BaseEventSpider.custom_settings,
         "PLAYWRIGHT_PROCESS_REQUEST_HEADERS": None,
-        "DOWNLOAD_DELAY": 3,
+        "DOWNLOAD_DELAY": 0,
+        "CONCURRENT_REQUESTS": 64,
     }
 
     def start_requests(self):
@@ -145,25 +146,31 @@ class BiletixSpider(BaseEventSpider):
                 url = self.extract_url(event, response)
                 image_url = self.extract_image(event)
 
-                if title:  # Only yield if we have at least a title
-                    event_item = EventItem(
-                        title=self.clean_text(title),
-                        venue=self.clean_text(venue) if venue else None,
-                        city=self.clean_text(city) if city else None,
-                        date=date,
-                        price=price,
+                if title and url:  # Only yield if we have at least a title and URL
+                    # Visit detail page to get price
+                    yield scrapy.Request(
                         url=url,
-                        image_url=image_url,
-                        category="Tiyatro",  # We're scraping theater section
-                        source="biletix",
+                        callback=self.parse_event_detail,
+                        meta={
+                            "playwright": True,
+                            "playwright_include_page": True,
+                            "playwright_page_goto_kwargs": {
+                                "wait_until": "domcontentloaded",
+                                "timeout": 60000,
+                            },
+                            "title": title,
+                            "venue": venue,
+                            "city": city,
+                            "date": date,
+                            "image_url": image_url,
+                            "source": "biletix",
+                        },
+                        errback=self.errback_close_page,
                     )
-
-                    self.log_event(event_item)
                     events_yielded += 1
-                    yield event_item
                 else:
                     events_skipped += 1
-                    self.logger.debug(f"Event #{idx} skipped: no title found")
+                    self.logger.debug(f"Event #{idx} skipped: no title or URL found")
 
             except Exception as e:
                 events_skipped += 1
@@ -184,6 +191,77 @@ class BiletixSpider(BaseEventSpider):
             self.logger.info(f"✅ All {total_on_page} events processed ({events_skipped} skipped due to missing data)")
         else:
             self.logger.info(f"✅ All {total_on_page} events successfully processed!")
+
+    async def parse_event_detail(self, response):
+        """Parse event detail page to extract price."""
+        page = response.meta["playwright_page"]
+        
+        try:
+            # Wait for page to load
+            await page.wait_for_load_state("domcontentloaded")
+            await asyncio.sleep(2)
+
+            # Extract price
+            price = None
+            
+            # Try 1: Standard price block
+            try:
+                # Look for price elements
+                # Common selectors: .price, .event-price, .ticket-price
+                price_el = await page.query_selector(".price, .event-price, .ticket-price, [class*='price']")
+                if price_el:
+                    price_text = await price_el.inner_text()
+                    if price_text:
+                        price = self.extract_price(price_text)
+            except Exception:
+                pass
+
+            # Try 2: Look for "Satın Al" button context or specific price containers
+            if not price:
+                try:
+                    # Sometimes price is near the buy button
+                    buy_section = await page.query_selector("#buy-tickets, .buy-tickets")
+                    if buy_section:
+                        text = await buy_section.inner_text()
+                        # regex for price
+                        import re
+                        match = re.search(r'(\d+[,.]\d{2})\s*TL', text)
+                        if match:
+                            price = self.extract_price(match.group(1))
+                except Exception:
+                    pass
+
+            # DEBUG: Dump HTML if price is missing
+            if not price:
+                try:
+                    content = await page.content()
+                    self.logger.warning(f"⚠️ Price missing for '{response.meta['title']}' on detail page. HTML dump: {content[:500]}...")
+                    # Save full HTML for inspection
+                    with open(f"biletix_detail_{response.meta['title'][:10]}.html", "w", encoding="utf-8") as f:
+                        f.write(content)
+                except Exception:
+                    pass
+            else:
+                self.logger.info(f"✓ Found price for '{response.meta['title']}': {price}")
+
+            # Yield the final item
+            event_item = EventItem(
+                title=self.clean_text(response.meta["title"]),
+                venue=self.clean_text(response.meta["venue"]) if response.meta["venue"] else None,
+                city=self.clean_text(response.meta["city"]) if response.meta["city"] else None,
+                date=response.meta["date"],
+                price=price,
+                url=response.url,
+                image_url=response.meta["image_url"],
+                category="Tiyatro",
+                source="biletix",
+            )
+            yield event_item
+
+        except Exception as e:
+            self.logger.error(f"Error parsing detail page for {response.url}: {e}")
+        finally:
+            await page.close()
 
     def extract_title(self, element):
         """Extract event title from element."""

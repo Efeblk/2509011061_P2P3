@@ -15,6 +15,7 @@ class EventItem(scrapy.Item):
     city = scrapy.Field()
     price = scrapy.Field()
     price_range = scrapy.Field()
+    category_prices = scrapy.Field()  # List of dicts: [{'name': '1. Kategori', 'price': 1200.0}, ...]
     url = scrapy.Field()
     image_url = scrapy.Field()
     category = scrapy.Field()
@@ -24,3 +25,5 @@ class EventItem(scrapy.Item):
     rating = scrapy.Field()
     rating_count = scrapy.Field()
     reviews = scrapy.Field()  # List of review dicts from detail page
+    uuid = scrapy.Field()  # For updating existing events
+    is_update_job = scrapy.Field()  # Flag for partial updates

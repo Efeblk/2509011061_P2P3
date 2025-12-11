@@ -2,9 +2,11 @@
 Scrapy pipelines for processing scraped items.
 """
 
+from datetime import datetime
 from loguru import logger
 from src.models.event import EventNode
 from src.models.event_content import EventContentNode
+from src.database.connection import db_connection
 
 
 class ValidationPipeline:
@@ -57,6 +59,12 @@ class DuplicatesPipeline:
         # Normalize venue and date to empty string if None (match database storage)
         venue = item.get("venue") or ""
         date = item.get("date") or ""
+        uuid = item.get("uuid")
+
+        # If UUID is present, this is an update job - skip duplicate check
+        if uuid:
+            logger.info(f"Update job detected for event: {title} ({uuid})")
+            return item
 
         # Create unique key from title, venue, and date
         event_key = (title, venue, date)
@@ -113,11 +121,70 @@ class FalkorDBPipeline:
                 category=item.get("category"),
                 source=item.get("source"),
             )
+            
+            # If item has UUID, use it (for updates)
+            if item.get("uuid"):
+                event.uuid = item["uuid"]
 
             # Save to database in a separate thread to avoid blocking the reactor
             import asyncio
 
-            save_success = await asyncio.to_thread(event.save)
+            import json
+            category_prices_json = json.dumps(item.get("category_prices", [])) if item.get("category_prices") else ""
+
+            save_success = False
+            if item.get("is_update_job"):
+                # Partial update: Only update price, category_prices and timestamp
+                query = """
+                    MATCH (n:Event {uuid: $uuid})
+                    SET n.price = $price, n.category_prices = $category_prices, n.updated_at = $updated_at
+                    RETURN n
+                """
+                params = {
+                    "uuid": item["uuid"],
+                    "price": item["price"],
+                    "category_prices": category_prices_json,
+                    "updated_at": datetime.now().isoformat()
+                }
+                result = await asyncio.to_thread(db_connection.execute_query, query, params)
+                if result:
+                    save_success = True
+                    logger.info(f"✓ Updated price & categories for event: {item['title']}")
+            else:
+                # Full update/create
+                query = """
+                    MERGE (n:Event {uuid: $uuid})
+                    SET n = {uuid: $uuid, title: $title, description: $description, date: $date, venue: $venue, city: $city, price: $price, price_range: $price_range, category_prices: $category_prices, url: $url, image_url: $image_url, category: $category, source: $source, ai_score: $ai_score, ai_verdict: $ai_verdict, ai_reasoning: $ai_reasoning, created_at: $created_at, updated_at: $updated_at}
+                    RETURN n
+                """
+                
+                # Prepare parameters (handle None values)
+                params = {
+                    "uuid": item["uuid"],
+                    "title": item["title"],
+                    "description": item.get("description") or "",
+                    "date": item["date"],
+                    "venue": item["venue"],
+                    "city": item["city"],
+                    "price": item["price"],
+                    "price_range": item.get("price_range") or "",
+                    "category_prices": category_prices_json,
+                    "url": item["url"],
+                    "image_url": item.get("image_url") or "",
+                    "category": item.get("category") or "Etkinlik",
+                    "source": item["source"],
+                    "ai_score": 0.0,
+                    "ai_verdict": "",
+                    "ai_reasoning": "",
+                    "created_at": datetime.now().isoformat(),
+                    "updated_at": datetime.now().isoformat()
+                }
+                
+                result = await asyncio.to_thread(db_connection.execute_query, query, params)
+                if result:
+                    save_success = True
+                    logger.info(f"✓ Saved event to database: {item['title']}")
+
 
             if save_success:
                 self.events_saved += 1

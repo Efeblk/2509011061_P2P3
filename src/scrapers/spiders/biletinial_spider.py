@@ -3,6 +3,7 @@ Biletinial spider for scraping events from biletinial.com
 """
 
 import asyncio
+import uuid
 import scrapy
 from src.scrapers.spiders.base import BaseEventSpider
 from src.scrapers.items import EventItem
@@ -38,8 +39,8 @@ class BiletinialSpider(BaseEventSpider):
     custom_settings = {
         **BaseEventSpider.custom_settings,
         "PLAYWRIGHT_PROCESS_REQUEST_HEADERS": None,
-        "DOWNLOAD_DELAY": 3,
-        "CONCURRENT_REQUESTS": 4,
+        "DOWNLOAD_DELAY": 0,
+        "CONCURRENT_REQUESTS": 256,
         "RETRY_TIMES": 2,
     }
 
@@ -140,7 +141,7 @@ class BiletinialSpider(BaseEventSpider):
 
             # Skip further processing if no event list found
             if not event_list_selector:
-                self.logger.error("❌ No event list found, skipping this page")
+                self.logger.warning("⚠️ No event list found (page might be empty), skipping this page")
                 return
 
             # Wait a bit for dynamic content
@@ -295,6 +296,7 @@ class BiletinialSpider(BaseEventSpider):
                                     source="biletinial",
                                     rating=rating,
                                     rating_count=rating_count,
+                                    uuid=str(uuid.uuid4()),
                                 )
 
                                 self.log_event(event_item)
@@ -334,6 +336,7 @@ class BiletinialSpider(BaseEventSpider):
         This is called for events that don't have dates on the listing page.
         Handles cinema (Vizyon Tarihi), stand-up, concerts, and other event types.
         """
+        self.logger.info("DEBUG: parse_event_detail called")
         page = response.meta["playwright_page"]
 
         try:
@@ -341,111 +344,207 @@ class BiletinialSpider(BaseEventSpider):
             await page.wait_for_load_state("domcontentloaded")
             await asyncio.sleep(2)  # Wait for dynamic content
 
-            # --- PRICE EXTRACTION (NEW) ---
-            # Check for SOLD OUT first
+            # Check for SOLD OUT first - MOVED TO SCOPED SECTION
             is_sold_out = False
-            try:
-                sold_out_el = await page.query_selector('.tukendi-yeni, button:has-text("TÜKENDİ")')
-                if sold_out_el:
-                    self.logger.info(f"⚠️ Event is SOLD OUT: '{response.meta.get('title')}'")
-                    is_sold_out = True
-                    final_price = None # Explicitly None for sold out
-            except Exception:
-                pass
-
             final_price = None
 
             # SCOPED EXTRACTION: Search only within Istanbul containers first
             # The DOM typically lists events by city for tours:
             # <div data-sehir="İstanbul Avrupa">...</div>
             # We want to find the container for "İstanbul" (Anadolu or Avrupa)
+            # User explicitly requested "istanbul anadolu" and "istanbul avrupa"
+            
+            # Try to find Istanbul specific containers
             istanbul_container = await page.query_selector('div[data-sehir*="İstanbul"], div[data-sehir*="istanbul"]')
             
-            search_scope = istanbul_container if istanbul_container else page
-
+            # Check if this is a tour page (has multiple cities)
+            all_city_containers = await page.query_selector_all('div[data-sehir]')
+            is_tour_page = len(all_city_containers) > 0
+            
             if istanbul_container:
                 self.logger.info("✓ Found Istanbul-specific event section, scoping price extraction.")
+                search_scope = istanbul_container
+            elif is_tour_page:
+                self.logger.warning("⚠️ Tour page detected but NO Istanbul container found. Skipping price extraction to avoid wrong city.")
+                search_scope = None # Explicitly disable search scope to avoid picking up Adana etc.
+            else:
+                # Single event page, safe to use page scope
+                search_scope = page
+            
+            self.logger.info(f"DEBUG: search_scope set. is_tour_page={is_tour_page}")
+
+            if search_scope:
+                # Check for SOLD OUT within the scope
+                try:
+                    sold_out_el = await search_scope.query_selector('.tukendi-yeni, button:has-text("TÜKENDİ")')
+                    if sold_out_el:
+                        self.logger.info(f"⚠️ Event is SOLD OUT in Istanbul: '{response.meta.get('title')}'")
+                        is_sold_out = True
+                except Exception:
+                    pass
+            
+            self.logger.info(f"DEBUG: is_sold_out={is_sold_out}")
 
             # Try 1: data-ticketprices JSON attribute (Most Reliable)
-            if not is_sold_out:
+            # Even if marked sold out, check JSON because it might be a false positive or partial availability
+            try:
+                # Wait for tooltip to ensure it's loaded
                 try:
-                    # Look for the anchor tag with the data attribute (scoped)
-                    tooltip_el = await search_scope.query_selector('a.ticket_price_tooltip')
-                    if tooltip_el:
-                        json_str = await tooltip_el.get_attribute("data-ticketprices")
-                        if json_str:
-                            import json
-                            data = json.loads(json_str)
-                            prices = []
-                            # Format could be Dict[ID, Dict] or Dict[ID, float] or List[Dict]
-                            if isinstance(data, dict):
-                                values = data.values()
-                            elif isinstance(data, list):
-                                values = data
-                            else:
-                                values = []
+                    await page.wait_for_selector('.ticket_price_tooltip', timeout=5000)
+                    self.logger.info("DEBUG: .ticket_price_tooltip appeared")
+                except Exception:
+                    self.logger.info("DEBUG: .ticket_price_tooltip wait timed out")
 
-                            for val in values:
-                                try:
-                                    # It might be a simple number or a dict
-                                    p = None
-                                    if isinstance(val, (int, float)):
-                                        p = float(val)
-                                    elif isinstance(val, dict):
-                                        # Look for likely keys
-                                        for key in ["price", "satis_fiyati", "fiyat", "amount", "tutar"]:
-                                            if key in val:
-                                                p = float(str(val[key]).replace(",", "."))
-                                                break
-                                    elif isinstance(val, str):
-                                        # "672,00"
-                                        p = float(val.replace(".", "").replace(",", "."))
-                                    
-                                    if p is not None and p > 0:
-                                        prices.append(p)
-                                except Exception:
-                                    continue
+                # Extract raw price data for finding min price
+                ticket_tooltip = await search_scope.query_selector('.ticket_price_tooltip')
+                
+                # Fallback to global page if scoped search failed and we are scoped
+                if not ticket_tooltip and search_scope != page:
+                        ticket_tooltip = await page.query_selector('.ticket_price_tooltip')
+                        if ticket_tooltip:
+                            self.logger.info("DEBUG: Found .ticket_price_tooltip in global scope (fallback)")
 
-                            if prices:
-                                final_price = min(prices)
-                                self.logger.info(f"✓ Extracted min price from JSON: {final_price}")
-                except Exception as e:
-                    self.logger.debug(f"JSON price extraction failed: {e}")
+                if ticket_tooltip:
+                    self.logger.info("DEBUG: Found .ticket_price_tooltip")
+                    data_ticketprices = await ticket_tooltip.get_attribute("data-ticketprices")
+                    if data_ticketprices:
+                        self.logger.info(f"DEBUG: Found data-ticketprices (len={len(data_ticketprices)})")
+                        import json
+                        import html
+                        # Decode HTML entities
+                        json_str = html.unescape(data_ticketprices)
+                        data = json.loads(json_str)
+                        prices = []
+
+                        if "prices" in data and isinstance(data["prices"], list):
+                            self.logger.info(f"DEBUG: Found 'prices' list in JSON: {len(data['prices'])} items")
+                            extracted_category_prices = []
+                            for p_item in data["prices"]:
+                                # p_item example: {"name": "1. Kategori", "price": "₺1.200,00", ...}
+                                cat_name = p_item.get("name")
+                                cat_price_raw = p_item.get("price")
+                                
+                                if cat_price_raw:
+                                    # Clean price: "₺1.200,00" -> 1200.0
+                                    cleaned_p = str(cat_price_raw).replace("₺", "").replace("TL", "").replace(".", "").replace(",", ".").strip()
+                                    try:
+                                        import re
+                                        match = re.search(r'(\d+(?:\.\d+)?)', cleaned_p)
+                                        if match:
+                                            price_val = float(match.group(1))
+                                            extracted_category_prices.append({
+                                                "name": cat_name,
+                                                "price": price_val
+                                            })
+                                            prices.append(price_val)
+                                    except ValueError:
+                                        pass
+                            
+                            if extracted_category_prices:
+                                self.logger.info(f"✓ Extracted {len(extracted_category_prices)} category prices")
+                                # Store in a temporary attribute to pass to item later
+                                response.meta['category_prices'] = extracted_category_prices
+                        else:
+                            self.logger.info("DEBUG: 'prices' list NOT found in JSON")
+
+                        # Fallback logic for single price extraction (existing logic)
+                        values = []
+                        # Format could be Dict[ID, Dict] or Dict[ID, float] or List[Dict]
+                        if isinstance(data, dict):
+                            values = data.values()
+                        elif isinstance(data, list):
+                            values = data
+                        else:
+                            values = []
+
+                        for val in values:
+                            try:
+                                # It might be a simple number or a dict
+                                p = None
+                                if isinstance(val, (int, float)):
+                                    p = float(val)
+                                elif isinstance(val, dict):
+                                    # Look for likely keys
+                                    for key in ["price", "satis_fiyati", "fiyat", "amount", "tutar"]:
+                                        if key in val:
+                                            p = float(str(val[key]).replace(",", "."))
+                                            break
+                                elif isinstance(val, str):
+                                    # "672,00"
+                                    p = float(val.replace(".", "").replace(",", "."))
+                                
+                                if p is not None and p > 0:
+                                    prices.append(p)
+                            except Exception:
+                                continue
+
+                        if prices:
+                            final_price = min(prices)
+                            self.logger.info(f"✓ Extracted min price from JSON: {final_price}")
+            except Exception as e:
+                self.logger.debug(f"JSON price extraction failed: {e}")
 
             # Try 2: .price-info span (e.g. <span class="price-info" itemprop="price">550,00</span>)
             if not final_price and not is_sold_out:
+
                 try:
-                    price_el = await search_scope.query_selector('.price-info[itemprop="price"], .bilet-fiyati')
+                    # Added .ed-biletler__sehir__gun__fiyat based on user screenshot
+                    # Try specific price span first (has content attribute)
+                    price_el = await search_scope.query_selector('.price-info[itemprop="price"]')
+                    
+                    # Fallback to global page if scoped search failed and we are scoped
+                    if not price_el and search_scope != page:
+                            price_el = await page.query_selector('.price-info[itemprop="price"]')
+                            if price_el:
+                                self.logger.info("✓ Found price in global scope (fallback)")
+
+                    # If not found, try broader containers
+                    if not price_el:
+                        price_el = await search_scope.query_selector('.bilet-fiyati, .ed-biletler__sehir__gun__fiyat')
+
                     if price_el:
-                        price_text = await price_el.inner_text()
+                        # Try 'content' attribute first (cleaner)
+                        price_text = await price_el.get_attribute("content")
                         if price_text:
-                            # Clean "550,00" -> 550.00
-                            cleaned = price_text.replace(".", "").replace(",", ".").replace("TL", "").strip()
-                            final_price = float(cleaned)
-                            self.logger.info(f"✓ Found price for '{response.meta.get('title')}': {final_price}")
+                            self.logger.info(f"✓ Found price in 'content' attribute: {price_text}")
+                        
+                        # Fallback to text
+                        if not price_text:
+                            price_text = await price_el.inner_text()
+
+                        if price_text:
+                            # Clean "550,00 ₺" -> 550.00
+                            # Remove dots (thousands), replace comma with dot, remove currency symbols
+                            cleaned = price_text.replace(".", "").replace(",", ".").replace("TL", "").replace("₺", "").strip()
+                            # Handle "Satın Al" or other non-price text
+                            import re
+                            match = re.search(r'(\d+(?:\.\d+)?)', cleaned)
+                            if match:
+                                final_price = float(match.group(1))
+                                self.logger.info(f"✓ Found price for '{response.meta.get('title')}': {final_price}")
+                            else:
+                                self.logger.debug(f"Could not parse price from text: {price_text}")
                 except Exception as e:
                     self.logger.debug(f"CSS price extraction failed: {e}")
 
             if not final_price and not is_sold_out:
-                 if not istanbul_container:
-                     self.logger.warning(f"⚠️ Could not extract price for '{response.meta.get('title')}'")
-                 else:
-                      self.logger.warning(f"⚠️ Found Istanbul container but no price inside.")
-                      # DEBUG: Dump HTML to see what's wrong
-                      try:
-                          html_dump = await istanbul_container.inner_html()
-                          self.logger.error(f"HTML DUMP for {response.meta.get('title')}: {html_dump[:500]}...")
-                      except Exception as e:
-                          self.logger.error(f"Failed to dump HTML: {e}")
+                    if not istanbul_container:
+                        self.logger.warning(f"⚠️ Could not extract price for '{response.meta.get('title')}'")
+                    else:
+                        self.logger.warning(f"⚠️ Found Istanbul container but no price inside.")
+                        # DEBUG: Dump HTML to see what's wrong
+                        try:
+                            html_dump = await istanbul_container.inner_html()
+                            self.logger.error(f"HTML DUMP for {response.meta.get('title')}: {html_dump[:500]}...")
+                        except Exception as e:
+                            self.logger.error(f"Failed to dump HTML: {e}")
 
-                 # Fallback for Cinema (Sinema) events
-                 # Cinema prices are hidden behind interactions, so we assume a default average
-                 # Fallback for Cinema (Sinema) events
-                 # Cinema prices are hidden behind interactions, so we assume a default average
-                 event_type = response.meta.get("event_type") or "Etkinlik"
-                 if "sinema" in event_type.lower() or "sinema" in response.url.lower():
-                     self.logger.info("🎬 Cinema detected: Applying default price of 250.0 TL")
-                     final_price = 250.0
+            # Fallback for Cinema (Sinema) events
+            # Cinema prices are hidden behind interactions, so we assume a default average
+            event_type = response.meta.get("event_type") or "Etkinlik"
+            if "sinema" in event_type.lower() or "sinema" in response.url.lower():
+                self.logger.info("🎬 Cinema detected: Applying default price of 250.0 TL")
+                final_price = 250.0
 
             # --- END PRICE EXTRACTION ---
 
@@ -571,14 +670,18 @@ class BiletinialSpider(BaseEventSpider):
                         venue=self.clean_text(venue) if venue else None,
                         city=self.clean_text(city) if city else "İstanbul",
                         date=individual_date,
-                        price=final_price, # UPDATED
-                        url=url,
+                        price=final_price,
+                        price_range=response.meta.get("price_range"), # Pass price_range if available
+                        category_prices=response.meta.get("category_prices"), # Pass extracted category prices
+                        url=response.url,
                         image_url=image_url,
                         category=event_type,
                         source="biletinial",
                         rating=rating,
                         rating_count=rating_count,
                         reviews=reviews,
+                        uuid=response.meta.get("uuid") or str(uuid.uuid4()), # Generate UUID if new event
+                        is_update_job=response.meta.get("is_update_job", False)
                     )
 
                     self.log_event(event_item)
@@ -596,6 +699,7 @@ class BiletinialSpider(BaseEventSpider):
                     image_url=image_url,
                     category=event_type,
                     source="biletinial",
+                    uuid=response.meta.get("uuid") or str(uuid.uuid4()),
                 )
                 yield event_item
 
@@ -612,6 +716,7 @@ class BiletinialSpider(BaseEventSpider):
                 image_url=response.meta.get("image_url"),
                 category=response.meta.get("event_type", "Etkinlik"),
                 source="biletinial",
+                uuid=response.meta.get("uuid") or str(uuid.uuid4()),
             )
             yield event_item
 

@@ -11,10 +11,10 @@ NEWSPIDER_MODULE = "src.scrapers.spiders"
 ROBOTSTXT_OBEY = False
 
 # Configure maximum concurrent requests
-CONCURRENT_REQUESTS = 6
+CONCURRENT_REQUESTS = 256
 
 # Configure a delay for requests for the same website
-DOWNLOAD_DELAY = 2
+DOWNLOAD_DELAY = 0
 
 # Disable cookies (enabled by default)
 COOKIES_ENABLED = True
@@ -55,7 +55,11 @@ PLAYWRIGHT_BROWSER_TYPE = "chromium"
 PLAYWRIGHT_LAUNCH_OPTIONS = {
     "headless": True,
     "timeout": 60000,
+    "args": ["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"] # Optimizations
 }
+
+# Increase thread pool for high concurrency
+REACTOR_THREADPOOL_MAXSIZE = 256
 
 # Set settings whose default value is deprecated to a future-proof value
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
