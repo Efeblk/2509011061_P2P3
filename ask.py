@@ -13,6 +13,7 @@ logger.add(sys.stderr, level="ERROR")
 
 from src.ai.assistant import EventAssistant, CATEGORIES
 
+
 async def main():
     parser = argparse.ArgumentParser(description="Event Assistant")
     parser.add_argument("query", type=str, nargs="?", help="Initial query")
@@ -22,14 +23,14 @@ async def main():
     print("   Type 'exit' or 'quit' to stop.\n")
 
     assistant = EventAssistant()
-    
+
     # If initial query provided, process it first
     initial_query = args.query
-    
+
     while True:
         if initial_query:
             query = initial_query
-            initial_query = None # Clear after first run
+            initial_query = None  # Clear after first run
         else:
             try:
                 query = input("\n>> What are you looking for? ").strip()
@@ -39,7 +40,7 @@ async def main():
 
         if not query:
             continue
-            
+
         if query.lower() in ["exit", "quit", "q"]:
             print("👋 Goodbye!")
             break
@@ -48,12 +49,12 @@ async def main():
 
         # 1. Identify Intent (Collection vs Search)
         intent = await assistant.identify_intent(query)
-        
+
         if intent and intent != "search":
             # Handle Collection
             cat_name = CATEGORIES.get(intent, intent)
             print(f"💡 Found a curated collection: {cat_name}\n")
-            
+
             events = await assistant.get_collection(intent)
             if not events:
                 print("❌ No events found in this collection.")
@@ -62,19 +63,19 @@ async def main():
                     print(f"📍 {e['title']}")
                     print(f"   🏠 {e['venue']} | 🗓️ {e['date']} | 💰 {e['price']}")
                     print(f"   🏆 {e['reason']}")
-                    if e.get('summary'):
+                    if e.get("summary"):
                         print(f"   📝 {e['summary']}")
                     print("-" * 60)
         else:
             # Handle Search (Hybrid + RAG)
             # 1. Search
             results = await assistant.search(query)
-            
+
             # 2. Generate Answer
             answer = await assistant.generate_answer(query, results)
-            
+
             print(f"\n🤖 {answer}\n")
-            
+
             if results:
                 print("📚 Source Events:")
                 print("-" * 60)
@@ -88,6 +89,7 @@ async def main():
                         print("-" * 60)
             else:
                 print("❌ No matching events found.")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

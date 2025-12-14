@@ -44,10 +44,7 @@ async def main():
 
     # Generate summaries
     results = await batch_generate_summaries(
-        events, 
-        delay=settings.ai.rate_limit_delay, 
-        force=args.force,
-        overwrite=args.all
+        events, delay=settings.ai.rate_limit_delay, force=args.force, overwrite=args.all
     )
 
     # Summary
@@ -60,7 +57,7 @@ async def main():
     logger.info(f"⊘ Skipped (low quality, no content): {results.get('skipped_low_quality', 0)}")
     logger.info(f"Total processed: {sum(results.values())}")
 
-    if results['failed'] > 0:
+    if results["failed"] > 0:
         logger.warning("\n⚠️  Some events failed to generate summaries.")
         logger.warning("Common causes:")
         logger.warning("  1. Ollama not running or not accessible")

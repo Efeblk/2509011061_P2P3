@@ -238,7 +238,7 @@ class TestFalkorDBPipeline:
             "category": "Music",
             "image_url": "http://example.com/img.jpg",
             "description": "Test Description",
-            "source": "test_spider"
+            "source": "test_spider",
         }
 
         await self.pipeline.process_item(item, self.spider)
@@ -262,7 +262,7 @@ class TestFalkorDBPipeline:
             "category": "Music",
             "image_url": "http://example.com/img.jpg",
             "description": "Test Description",
-            "source": "test_spider"
+            "source": "test_spider",
         }
 
         await self.pipeline.process_item(item, self.spider)
@@ -285,7 +285,7 @@ class TestFalkorDBPipeline:
             "category": "Music",
             "image_url": "http://example.com/img.jpg",
             "description": "Test Description",
-            "source": "test_spider"
+            "source": "test_spider",
         }
 
         with pytest.raises(DropItem, match="Database error"):

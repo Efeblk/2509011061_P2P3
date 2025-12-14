@@ -55,7 +55,7 @@ PLAYWRIGHT_BROWSER_TYPE = "chromium"
 PLAYWRIGHT_LAUNCH_OPTIONS = {
     "headless": True,
     "timeout": 60000,
-    "args": ["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"] # Optimizations
+    "args": ["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"],  # Optimizations
 }
 
 # Increase thread pool for high concurrency

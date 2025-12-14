@@ -20,8 +20,9 @@ def get_ai_client(use_reasoning: bool = False):
     # Reasoning uses Gemini (if not local)
     if use_reasoning:
         from src.ai.gemini_client import GeminiClient
+
         return GeminiClient(model_name=settings.ai.model_reasoning)
-        
+
     return gemini_client
 
 
@@ -83,11 +84,11 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
     # Prepare reviews section with AI summary and top reviews
     reviews_section = ""
     reviews = []
-    
+
     # We need to check for reviews before deciding to skip
     try:
         from src.models.event_content import EventContentNode
-        
+
         # Get Biletinial's AI summary if available
         ai_contents = EventContentNode.find_by_event_uuid(event.uuid, content_type="ai_summary")
 
@@ -133,7 +134,7 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
     # Final check: If no description and no reviews/AI summary, SKIP LLM SUMMARY
     # But we still save the embedding if we have one.
     has_description = event.description and len(event.description.strip()) > 10
-    
+
     summary_data = {}
     skipped_llm = False
 
@@ -161,7 +162,7 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
 
         if not summary_data:
             logger.error(f"Failed to generate summary for: {event.title}")
-            # If we have an embedding, we can still save it? 
+            # If we have an embedding, we can still save it?
             # Ideally yes, but let's treat LLM failure as a soft fail for now unless we have embedding.
             if not embedding_json:
                 return None
@@ -197,9 +198,9 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
 
         if saved:
             if skipped_llm:
-                 logger.debug(f"✓ Embedding created (LLM skipped) for: {event.title}")
+                logger.debug(f"✓ Embedding created (LLM skipped) for: {event.title}")
             else:
-                 logger.debug(f"✓ Summary created for: {event.title}")
+                logger.debug(f"✓ Summary created for: {event.title}")
             return saved
         else:
             logger.error(f"Failed to save summary for: {event.title}")
@@ -211,10 +212,7 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
 
 
 async def batch_generate_summaries(
-    events: list[EventNode],
-    delay: float = 1.0,
-    force: bool = False,
-    overwrite: bool = False
+    events: list[EventNode], delay: float = 1.0, force: bool = False, overwrite: bool = False
 ) -> dict:
     """
     Generate summaries for multiple events with rate limiting.
@@ -257,6 +255,7 @@ async def batch_generate_summaries(
                 has_description = event.description and len(event.description.strip()) > 10
                 try:
                     from src.models.event_content import EventContentNode
+
                     ai_contents = EventContentNode.find_by_event_uuid(event.uuid, content_type="ai_summary")
                     user_reviews = EventContentNode.find_by_event_uuid(event.uuid, content_type="user_review")
                     has_content = bool(ai_contents or user_reviews)
@@ -269,11 +268,13 @@ async def batch_generate_summaries(
                     results["failed"] += 1
 
             pbar.update(1)
-            pbar.set_postfix(success=results["success"], failed=results["failed"], low_quality=results["skipped_low_quality"])
+            pbar.set_postfix(
+                success=results["success"], failed=results["failed"], low_quality=results["skipped_low_quality"]
+            )
 
     # Create tasks
     tasks = [process_event(e) for e in events]
-    
+
     # Run all
     with tqdm(total=len(events), desc="🤖 Enriching Events", unit="event", dynamic_ncols=True) as pbar:
         await asyncio.gather(*tasks)

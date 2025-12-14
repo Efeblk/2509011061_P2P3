@@ -23,7 +23,7 @@ async def main():
     # Fetch ALL summaries
     # Note: get_all_summaries limits to 100 by default, we need a custom query for stats
     # to avoid loading 4000 objects into memory if possible, but for analysis objects are fine for now.
-    
+
     # Let's use a direct Cypher aggregation query for efficiency first
     try:
         # 1. General Stats
@@ -36,7 +36,7 @@ async def main():
         """
         res = db_connection.graph.query(query).result_set[0]
         total, avg_score, min_score, max_score = res
-        
+
         if total == 0:
             print("⚠️  No AI summaries found in the database.")
             return
@@ -50,24 +50,28 @@ async def main():
         # Fetching uuid and sentiment_summary is lighter than full objects
         query_text = "MATCH (s:AISummary) RETURN s.sentiment_summary, s.importance"
         res_text = db_connection.graph.query(query_text).result_set
-        
+
         low_quality_count = 0
         importance_counts = Counter()
-        
+
         for row in res_text:
             sentiment = row[0] or ""
             importance = row[1] or "Unknown"
-            
+
             importance_counts[importance] += 1
-            
+
             # Heuristic for "empty" summaries
-            if "no reviews available" in sentiment.lower() or "impossible to gauge" in sentiment.lower() or "no description" in sentiment.lower():
+            if (
+                "no reviews available" in sentiment.lower()
+                or "impossible to gauge" in sentiment.lower()
+                or "no description" in sentiment.lower()
+            ):
                 low_quality_count += 1
-        
+
         print("\n📉 Quality Issues:")
         print(f"   Low Content / Empty Summaries: {low_quality_count} ({low_quality_count/total*100:.1f}%)")
         print("   (Events with missing description/reviews that AI couldn't summarize meaningfully)")
-        
+
         print("\n🏷️  Importance Distribution:")
         for imp, count in importance_counts.most_common():
             print(f"   - {imp}: {count}")
@@ -78,18 +82,18 @@ async def main():
         RETURN s.value_rating, e.category_prices
         """
         res_value = db_connection.graph.query(query_value).result_set
-        
+
         value_counts = Counter()
         priced_events = 0
-        
+
         for row in res_value:
             rating = row[0] or "Unknown"
             prices = row[1]
-            
+
             value_counts[rating] += 1
             if prices and len(prices) > 5:  # Basic check if JSON/string is not empty
                 priced_events += 1
-                
+
         print("\n💰 Value & Pricing:")
         print(f"   Events with Category Prices: {priced_events}/{total} ({priced_events/total*100:.1f}%)")
         print("   Value Ratings:")
@@ -101,7 +105,7 @@ async def main():
         # Find events WITHOUT summary to classify them
         query_total = "MATCH (e:Event) RETURN count(e)"
         total_events = db_connection.graph.query(query_total).result_set[0][0]
-        
+
         # Get pending events (no summary) to check their quality
         # We fetch ID and description to check eligibility
         query_pending = """
@@ -110,14 +114,14 @@ async def main():
         RETURN e.description
         """
         res_pending = db_connection.graph.query(query_pending).result_set
-        
+
         pending_total = len(res_pending)
         total_summarized = total_events - pending_total
-        
+
         # Analyze pending backlog
         actionable_pending = 0
         likely_skipped = 0
-        
+
         for row in res_pending:
             desc = row[0]
             # Match the logic in enrichment.py (len > 10)
@@ -132,26 +136,26 @@ async def main():
         print(f"   Shape of Backlog ({pending_total} pending):")
         print(f"   ✅ Actionable:     {actionable_pending} (Ready to enrich)")
         print(f"   🚫 Likely Skipped: {likely_skipped} (Empty description, skipped in fast mode)")
-        
+
         if actionable_pending > 0:
             # Estimates (Updated for Parallel Processing)
             # Cloud (Gemini): ~0.2s/event effective (batch/parallel)
             # Local (Ollama): ~1.5s/event effective (8x parallel)
             est_cloud = actionable_pending * 0.2 / 60  # minutes
             est_local = actionable_pending * 1.5 / 60  # minutes
-            
+
             print(f"\n⏱️  Est. Time for Actionable Events (Parallel):")
             print(f"   - Cloud (Gemini): ~{est_cloud:.1f} mins")
             print(f"   - Local (Ollama): ~{est_local:.1f} mins")
         elif likely_skipped > 0:
             est_cloud = likely_skipped * 0.2 / 60
             est_local = likely_skipped * 1.5 / 60
-            
+
             print(f"\n⏱️  Est. Time to FORCE Process (Likely Skipped):")
             print(f"   - Cloud (Gemini): ~{est_cloud:.1f} mins")
             print(f"   - Local (Ollama): ~{est_local:.1f} mins")
         else:
-             print("\n🎉 All Done!")
+            print("\n🎉 All Done!")
 
         # 5. Recommendations
         print("\n💡 Recommendations:")
@@ -165,6 +169,7 @@ async def main():
         logger.error(f"Audit failed: {e}")
     finally:
         db_connection.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

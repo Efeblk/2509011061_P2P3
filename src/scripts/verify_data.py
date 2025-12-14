@@ -81,16 +81,16 @@ def verify_data():
     # 2.5 Price Quality Check
     print("\n💰 PRICE INTEGRITY CHECK")
     print("-" * 80)
-    
+
     # Count events with valid prices
     priced_events = g.query("MATCH (e:Event) WHERE e.price IS NOT NULL RETURN count(e)").result_set[0][0]
-    
+
     # Count missing prices
     missing_price = g.query("MATCH (e:Event) WHERE e.price IS NULL RETURN count(e)").result_set[0][0]
-    
+
     # Count free/zero priced (could be issue or genuinely free)
     zero_price = g.query("MATCH (e:Event) WHERE e.price = 0 OR e.price = 0.0 RETURN count(e)").result_set[0][0]
-    
+
     # Count default Cinema prices (250.0)
     cinema_default = g.query("MATCH (e:Event) WHERE e.price = 250.0 RETURN count(e)").result_set[0][0]
 
@@ -105,7 +105,6 @@ def verify_data():
     elif missing_price > total * 0.5:
         print("⚠️  Warning: More than 50% of events have no price.")
         # Not adding to issues as failure, just warning
-
 
     # 3. Data Quality Checks
     print("\n🔍 DATA QUALITY CHECKS")

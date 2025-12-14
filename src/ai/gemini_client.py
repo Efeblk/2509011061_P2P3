@@ -71,7 +71,9 @@ class GeminiClient:
             logger.error(f"Error generating embedding: {e}")
             return None
 
-    async def generate(self, prompt: str, temperature: float = 0.7, use_cache: bool = True, retry: int = 3) -> Optional[str]:
+    async def generate(
+        self, prompt: str, temperature: float = 0.7, use_cache: bool = True, retry: int = 3
+    ) -> Optional[str]:
         """
         Generate text completion.
 
@@ -85,7 +87,7 @@ class GeminiClient:
             Generated text or None if failed
         """
         import asyncio
-        
+
         cache_key = self._get_cache_key(prompt, f"gen_{temperature}")
 
         # Check cache
@@ -96,6 +98,7 @@ class GeminiClient:
         # Generate with retry
         for attempt in range(retry):
             try:
+
                 def make_request():
                     return self.model.generate_content(
                         prompt,
@@ -183,5 +186,6 @@ class _GeminiClientProxy:
 
     def __getattr__(self, name):
         return getattr(self._get_client(), name)
+
 
 gemini_client = _GeminiClientProxy()

@@ -310,7 +310,7 @@ class TestLiveAISummaryVerification:
         """Verify that AI summaries have been generated and saved."""
         res = db_graph.query("MATCH (s:AISummary) RETURN count(s)")
         count = res.result_set[0][0]
-        
+
         # User mentioned manually stopping, so we expect some but maybe not all
         assert count > 0, "No AI summaries found in database. Did the enrichment process run?"
         print(f"\nFound {count} AI summaries in database.")
@@ -324,20 +324,20 @@ class TestLiveAISummaryVerification:
         LIMIT 5
         """
         res = db_graph.query(query)
-        
+
         assert len(res.result_set) > 0, "No linked summaries found"
-        
+
         for row in res.result_set:
             title = row[0]
             score = row[1]
             summary_json_str = row[2]
             concerns_str = row[3]
-            
+
             # 1. Basic integrity
             assert title, "Event must have a title"
             assert isinstance(score, (int, float)), "Score must be numeric"
             assert 0 <= score <= 10, "Score must be 0-10"
-            
+
             # 2. JSON validity
             try:
                 data = json.loads(summary_json_str)
@@ -349,4 +349,3 @@ class TestLiveAISummaryVerification:
             if score < 5:
                 concerns = json.loads(concerns_str) if concerns_str else []
                 assert len(concerns) > 0, f"Low quality event '{title}' (score {score}) should have concerns listed"
-

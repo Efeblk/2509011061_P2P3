@@ -42,7 +42,7 @@ class CollectionNode(Node):
         try:
             self.updated_at = datetime.utcnow()
             properties = self._get_properties()
-            
+
             # Simple merge based on category (unique key)
             query = """
             MERGE (c:Collection {category: $category})
@@ -51,7 +51,7 @@ class CollectionNode(Node):
             """
             # We overwrite name/desc if they changed
             params = {"category": self.category, "props": properties}
-            
+
             result = db_connection.graph.query(query, params)
             if result.result_set:
                 return self
@@ -74,7 +74,7 @@ class CollectionNode(Node):
                 "event_uuid": event_uuid,
                 "rank": rank,
                 "reason": reason,
-                "now": datetime.utcnow().isoformat()
+                "now": datetime.utcnow().isoformat(),
             }
             db_connection.graph.query(query, params)
         except Exception as e:
@@ -104,9 +104,9 @@ class CollectionNode(Node):
                     name=data.properties.get("name"),
                     description=data.properties.get("description"),
                     category=data.properties.get("category"),
-                    updated_at=datetime.fromisoformat(data.properties["updated_at"])
+                    updated_at=datetime.fromisoformat(data.properties["updated_at"]),
                 )
             return None
         except Exception as e:
-             print(f"Error getting collection: {e}")
-             return None
+            print(f"Error getting collection: {e}")
+            return None

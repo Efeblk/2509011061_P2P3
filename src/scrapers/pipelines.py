@@ -121,7 +121,7 @@ class FalkorDBPipeline:
                 category=item.get("category"),
                 source=item.get("source"),
             )
-            
+
             # If item has UUID, use it (for updates)
             if item.get("uuid"):
                 event.uuid = item["uuid"]
@@ -130,6 +130,7 @@ class FalkorDBPipeline:
             import asyncio
 
             import json
+
             category_prices_json = json.dumps(item.get("category_prices", [])) if item.get("category_prices") else ""
 
             save_success = False
@@ -144,7 +145,7 @@ class FalkorDBPipeline:
                     "uuid": item["uuid"],
                     "price": item["price"],
                     "category_prices": category_prices_json,
-                    "updated_at": datetime.now().isoformat()
+                    "updated_at": datetime.now().isoformat(),
                 }
                 result = await asyncio.to_thread(db_connection.execute_query, query, params)
                 if result:
@@ -157,7 +158,7 @@ class FalkorDBPipeline:
                     SET n = {uuid: $uuid, title: $title, description: $description, date: $date, venue: $venue, city: $city, price: $price, price_range: $price_range, category_prices: $category_prices, url: $url, image_url: $image_url, category: $category, source: $source, ai_score: $ai_score, ai_verdict: $ai_verdict, ai_reasoning: $ai_reasoning, created_at: $created_at, updated_at: $updated_at}
                     RETURN n
                 """
-                
+
                 # Prepare parameters (handle None values)
                 params = {
                     "uuid": item["uuid"],
@@ -177,14 +178,13 @@ class FalkorDBPipeline:
                     "ai_verdict": "",
                     "ai_reasoning": "",
                     "created_at": datetime.now().isoformat(),
-                    "updated_at": datetime.now().isoformat()
+                    "updated_at": datetime.now().isoformat(),
                 }
-                
+
                 result = await asyncio.to_thread(db_connection.execute_query, query, params)
                 if result:
                     save_success = True
                     logger.info(f"✓ Saved event to database: {item['title']}")
-
 
             if save_success:
                 self.events_saved += 1

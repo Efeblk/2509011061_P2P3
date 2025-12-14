@@ -17,12 +17,7 @@ class FalkorDBSettings(BaseSettings):
     db: int = Field(default=0, alias="FALKORDB_DB")
     graph_name: str = Field(default="eventgraph", alias="FALKORDB_GRAPH_NAME")
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
     @property
     def connection_string(self) -> str:
@@ -38,12 +33,7 @@ class GeminiSettings(BaseSettings):
     api_key: str = Field(..., alias="GEMINI_API_KEY")
     model: str = Field(default="gemini-1.5-flash", alias="GEMINI_MODEL")
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
 
 class OllamaSettings(BaseSettings):
@@ -54,31 +44,20 @@ class OllamaSettings(BaseSettings):
     model_reasoning: str = Field(default="mistral-nemo", alias="LOCAL_AI_REASONING")
     model_embedding: str = Field(default="mxbai-embed-large", alias="OLLAMA_MODEL_EMBEDDING")
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
 
 class ScrapySettings(BaseSettings):
     """Web scraping configuration."""
 
     user_agent: str = Field(
-        default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        alias="SCRAPY_USER_AGENT"
+        default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", alias="SCRAPY_USER_AGENT"
     )
     concurrent_requests: int = Field(default=16, alias="SCRAPY_CONCURRENT_REQUESTS")
     download_delay: float = Field(default=1.0, alias="SCRAPY_DOWNLOAD_DELAY")
     playwright_headless: bool = Field(default=True, alias="PLAYWRIGHT_HEADLESS")
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
 
 class AISettings(BaseSettings):
@@ -90,7 +69,7 @@ class AISettings(BaseSettings):
     cache_enabled: bool = Field(default=True, alias="AI_CACHE_ENABLED")
     enable_embeddings: bool = Field(default=False, alias="AI_ENABLE_EMBEDDINGS")
     concurrency: int = Field(default=8, alias="AI_CONCURRENCY")
-    
+
     # Provider selection: "gemini" or "ollama"
     provider: str = Field(default="gemini", alias="AI_LOCAL")
 
@@ -98,12 +77,7 @@ class AISettings(BaseSettings):
     model_fast: str = Field(default="llama3.2", alias="AI_MODEL_FAST")
     model_reasoning: str = Field(default="gemini-3.0-pro", alias="AI_MODEL_REASONING")
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
 
 class AppSettings(BaseSettings):
@@ -119,12 +93,7 @@ class AppSettings(BaseSettings):
     min_event_price: float = Field(default=0.0, alias="MIN_EVENT_PRICE")
     max_event_price: float = Field(default=10000.0, alias="MAX_EVENT_PRICE")
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
     @validator("log_level")
     def validate_log_level(cls, v):

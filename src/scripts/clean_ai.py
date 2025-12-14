@@ -12,10 +12,11 @@ sys.path.append(os.getcwd())
 from src.database.connection import db_connection
 from loguru import logger
 
+
 def clean_ai():
     """Remove all AISummary nodes."""
     logger.info(f"🧹 Removing AI summaries from graph '{db_connection.graph.name}'...")
-    
+
     try:
         query = "MATCH (s:AISummary) DETACH DELETE s"
         db_connection.execute_query(query)
@@ -24,6 +25,7 @@ def clean_ai():
     except Exception as e:
         logger.error(f"Failed to remove AI summaries: {e}")
         return False
+
 
 if __name__ == "__main__":
     success = clean_ai()

@@ -47,14 +47,11 @@ class OllamaClient:
         """
         try:
             url = f"{self.base_url}/api/embeddings"
-            payload = {
-                "model": settings.ollama.model_embedding,
-                "prompt": text
-            }
-            
+            payload = {"model": settings.ollama.model_embedding, "prompt": text}
+
             response = requests.post(url, json=payload, timeout=30)
             response.raise_for_status()
-            
+
             data = response.json()
             return data.get("embedding")
 
@@ -97,29 +94,28 @@ class OllamaClient:
 
         if not result:
             return None
-        
+
         try:
             return json.loads(result)
         except json.JSONDecodeError:
             logger.error(f"Failed to parse JSON from Ollama: {result[:100]}...")
             return None
 
-    async def _generate_request(self, prompt: str, temperature: float, format: Optional[str] = None, model: Optional[str] = None) -> Optional[str]:
+    async def _generate_request(
+        self, prompt: str, temperature: float, format: Optional[str] = None, model: Optional[str] = None
+    ) -> Optional[str]:
         """Internal method for generation request."""
         import asyncio
-        
+
         try:
             url = f"{self.base_url}/api/generate"
             payload = {
                 "model": model or self.model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {
-                    "temperature": temperature,
-                    "num_ctx": 2048  # Reduced from 4096 for speed/memory
-                }
+                "options": {"temperature": temperature, "num_ctx": 2048},  # Reduced from 4096 for speed/memory
             }
-            
+
             if format == "json":
                 payload["format"] = "json"
 
@@ -129,7 +125,7 @@ class OllamaClient:
 
             response = await asyncio.to_thread(make_request)
             response.raise_for_status()
-            
+
             return response.json().get("response")
 
         except requests.exceptions.ConnectionError:
@@ -141,6 +137,7 @@ class OllamaClient:
         except Exception as e:
             logger.error(f"Error generating with Ollama: {e}")
             return None
+
 
 # Lazy-initialized global client instance
 class _OllamaClientProxy:
@@ -156,5 +153,6 @@ class _OllamaClientProxy:
 
     def __getattr__(self, name):
         return getattr(self._get_client(), name)
+
 
 ollama_client = _OllamaClientProxy()

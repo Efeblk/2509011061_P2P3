@@ -195,7 +195,7 @@ class BiletixSpider(BaseEventSpider):
     async def parse_event_detail(self, response):
         """Parse event detail page to extract price."""
         page = response.meta["playwright_page"]
-        
+
         try:
             # Wait for page to load
             await page.wait_for_load_state("domcontentloaded")
@@ -203,7 +203,7 @@ class BiletixSpider(BaseEventSpider):
 
             # Extract price
             price = None
-            
+
             # Try 1: Standard price block
             try:
                 # Look for price elements
@@ -225,7 +225,8 @@ class BiletixSpider(BaseEventSpider):
                         text = await buy_section.inner_text()
                         # regex for price
                         import re
-                        match = re.search(r'(\d+[,.]\d{2})\s*TL', text)
+
+                        match = re.search(r"(\d+[,.]\d{2})\s*TL", text)
                         if match:
                             price = self.extract_price(match.group(1))
                 except Exception:
@@ -235,7 +236,9 @@ class BiletixSpider(BaseEventSpider):
             if not price:
                 try:
                     content = await page.content()
-                    self.logger.warning(f"⚠️ Price missing for '{response.meta['title']}' on detail page. HTML dump: {content[:500]}...")
+                    self.logger.warning(
+                        f"⚠️ Price missing for '{response.meta['title']}' on detail page. HTML dump: {content[:500]}..."
+                    )
                     # Save full HTML for inspection
                     with open(f"biletix_detail_{response.meta['title'][:10]}.html", "w", encoding="utf-8") as f:
                         f.write(content)

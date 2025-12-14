@@ -40,6 +40,7 @@ print(f" - Biletinial: {biletinial_count}")
 print(f" - Biletix: {biletix_count}")
 print(f"Ratings: {total_ratings} | Reviews: {total_reviews}\n")
 
+
 def print_event(i, row):
     event_uuid = row[0]
     title = row[1]
@@ -50,7 +51,7 @@ def print_event(i, row):
     source = row[6]
     rating = row[7]
     rating_count = row[8]
-    
+
     price_str = f"{price} TL" if price is not None else "N/A"
 
     print(f"{i+1}. {title}")
@@ -65,6 +66,7 @@ def print_event(i, row):
     else:
         print(f"   ⭐ Rating: N/A")
     print("-" * 40)
+
 
 # 1. Show Biletinial Samples
 print(f"\n🎟️  LATEST 10 FROM BILETINIAL")
@@ -89,6 +91,3 @@ r_biletix = g.query(
 
 for i, row in enumerate(r_biletix.result_set):
     print_event(i, row)
-
-
-
