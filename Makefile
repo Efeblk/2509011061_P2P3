@@ -25,6 +25,13 @@ help:
 	@echo "  make clean-data   - Wipe database data (keeps Docker running)"
 	@echo "  make fclean       - Full clean (removes venv, database, cache)"
 	@echo ""
+	@echo "🤖 AI Commands:"
+	@echo "  make ask [QUERY=...] - Ask for recommendations (interactive or direct)"
+	@echo "  make ai-enrich       - Generate AI summaries"
+	@echo "  make ai-embeddings   - Regenerate embeddings only (fast)"
+	@echo "  make ai-collections  - Run AI tournaments"
+	@echo "  make ai-view         - Audit AI quality"
+	@echo ""
 	@echo "📦 Setup:"
 	@echo "  make install   - Install dependencies"
 	@echo "  make setup     - Full first-time setup"
@@ -199,8 +206,13 @@ test:
 	@venv/bin/pytest
 
 # Helper for CLI
+# Helper for CLI
 ask:
-	@venv/bin/python ask.py
+	@if [ -n "$(QUERY)" ]; then \
+		venv/bin/python ask.py "$(QUERY)"; \
+	else \
+		venv/bin/python ask.py; \
+	fi
 
 lint:
 	@echo "🔍 Running linters..."
@@ -232,6 +244,10 @@ ai-enrich:
 ai-enrich-all:
 	@echo "🤖 Regenerating AI summaries for ALL events..."
 	@export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py --all $(FORCE)
+
+ai-embeddings:
+	@echo "🧠 Regenerating embeddings only..."
+	@export PYTHONPATH=. && venv/bin/python src/scripts/update_embeddings_only.py
 
 ai-view:
 	@export PYTHONPATH=. && venv/bin/python src/scripts/audit_ai_quality.py

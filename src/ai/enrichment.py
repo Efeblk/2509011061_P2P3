@@ -118,8 +118,13 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
     embedding_json = None
     if settings.ai.enable_embeddings:
         try:
-            # Use Title + Category + Description (even if short)
-            embedding_text = f"{event.title}. {event.category or ''}. {event.description or ''}"
+            # Fetch venue name
+            venue_query = "MATCH (e:Event {uuid: $uuid})-[:HELD_AT]->(v:Venue) RETURN v.name"
+            venue_res = db_connection.execute_query(venue_query, {"uuid": event.uuid})
+            venue_name = venue_res.result_set[0][0] if venue_res and venue_res.result_set else ""
+
+            # Use Title + Venue + Category + Description
+            embedding_text = f"{event.title}. {venue_name}. {event.category or ''}. {event.description or ''}"
             embedding_vector = client.embed(embedding_text)
             embedding_json = json.dumps(embedding_vector) if embedding_vector else None
         except Exception as e:
