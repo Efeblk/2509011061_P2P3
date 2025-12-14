@@ -63,6 +63,23 @@ ollama serve  # Start Ollama server
 
 *Higher concurrency = faster processing but more memory usage.*
 
+### 4. Configure Scraping
+Adjust scraping performance in the `.env` file.
+
+```env
+# .env
+SCRAPY_CONCURRENT_REQUESTS=16  # Number of concurrent HTTP requests
+SCRAPY_DOWNLOAD_DELAY=1        # Delay between requests (in seconds)
+PLAYWRIGHT_HEADLESS=true       # Run browser in headless mode
+```
+
+**Scraping Performance Recommendations:**
+- **Conservative**: `SCRAPY_CONCURRENT_REQUESTS=8`, `SCRAPY_DOWNLOAD_DELAY=2` → Slower but gentler on servers
+- **Balanced**: `SCRAPY_CONCURRENT_REQUESTS=16`, `SCRAPY_DOWNLOAD_DELAY=1` → Good balance of speed and stability
+- **Aggressive**: `SCRAPY_CONCURRENT_REQUESTS=32`, `SCRAPY_DOWNLOAD_DELAY=0.5` → Fastest but may trigger rate limits
+
+*Higher concurrent requests = faster scraping but more network/CPU usage and higher chance of being blocked.*
+
 ---
 
 ## 🚀 Usage Workflow
