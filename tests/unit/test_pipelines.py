@@ -221,47 +221,71 @@ class TestFalkorDBPipeline:
         assert self.pipeline.events_saved == 0
         assert self.pipeline.events_failed == 0
 
-    @patch("src.scrapers.pipelines.EventNode")
-    async def test_successful_save_increments_counter(self, mock_event_class):
+    @patch("src.scrapers.pipelines.db_connection")
+    async def test_successful_save_increments_counter(self, mock_db):
         """Test that successful saves increment the counter."""
-        mock_event = Mock()
-        mock_event.save.return_value = True
-        mock_event.title = "Test Event"
-        mock_event_class.return_value = mock_event
+        # Mock execute_query to return True (simulating success)
+        mock_db.execute_query.return_value = True
 
         item = {
             "title": "Test Event",
             "date": "2025-12-15",
             "venue": "Test Venue",
+            "city": "Istanbul",
+            "uuid": "test-uuid-1",
+            "url": "http://example.com",
+            "price": 100.0,
+            "category": "Music",
+            "image_url": "http://example.com/img.jpg",
+            "description": "Test Description",
+            "source": "test_spider"
         }
 
         await self.pipeline.process_item(item, self.spider)
         assert self.pipeline.events_saved == 1
         assert self.pipeline.events_failed == 0
 
-    @patch("src.scrapers.pipelines.EventNode")
-    async def test_failed_save_increments_failure_counter(self, mock_event_class):
+    @patch("src.scrapers.pipelines.db_connection")
+    async def test_failed_save_increments_failure_counter(self, mock_db):
         """Test that failed saves increment failure counter."""
-        mock_event = Mock()
-        mock_event.save.return_value = False
-        mock_event.title = "Test Event"
-        mock_event_class.return_value = mock_event
+        # Mock execute_query to return False/None (simulating failure)
+        mock_db.execute_query.return_value = None
 
         item = {
             "title": "Test Event",
+            "uuid": "test-uuid-2",
+            "date": "2025-12-15",
+            "city": "Istanbul",
+            "venue": "Test Venue",
+            "url": "http://example.com",
+            "price": 100.0,
+            "category": "Music",
+            "image_url": "http://example.com/img.jpg",
+            "description": "Test Description",
+            "source": "test_spider"
         }
 
         await self.pipeline.process_item(item, self.spider)
         assert self.pipeline.events_saved == 0
         assert self.pipeline.events_failed == 1
 
-    @patch("src.scrapers.pipelines.EventNode")
-    async def test_exception_during_save_raises_drop_item(self, mock_event_class):
+    @patch("src.scrapers.pipelines.db_connection")
+    async def test_exception_during_save_raises_drop_item(self, mock_db):
         """Test that exceptions during save raise DropItem."""
-        mock_event_class.side_effect = Exception("Database error")
+        mock_db.execute_query.side_effect = Exception("Database error")
 
         item = {
             "title": "Test Event",
+            "uuid": "test-uuid-3",
+            "date": "2025-12-15",
+            "city": "Istanbul",
+            "venue": "Test Venue",
+            "url": "http://example.com",
+            "price": 100.0,
+            "category": "Music",
+            "image_url": "http://example.com/img.jpg",
+            "description": "Test Description",
+            "source": "test_spider"
         }
 
         with pytest.raises(DropItem, match="Database error"):

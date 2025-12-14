@@ -62,7 +62,7 @@ class TestEventNode:
         assert props["venue"] == ""
         assert props["city"] == ""
         assert props["description"] == ""
-        assert props["price"] == 0.0
+        assert props["price"] is None
 
     def test_event_properties_with_values(self):
         """Test that actual values are preserved in properties."""
@@ -131,3 +131,15 @@ class TestEventNode:
         assert props["ai_score"] == 0.85
         assert props["ai_verdict"] == "recommended"
         assert props["ai_reasoning"] == "Great event for music lovers"
+
+    def test_venue_handling(self):
+        """Test specific venue handling logic."""
+        # Case 1: Venue is None -> Empty string in props
+        event_none = EventNode(title="No Venue", venue=None)
+        assert event_none.venue is None
+        assert event_none._get_properties()["venue"] == ""
+
+        # Case 2: Venue is provided
+        event_venue = EventNode(title="Venue", venue="AKM")
+        assert event_venue.venue == "AKM"
+        assert event_venue._get_properties()["venue"] == "AKM"
