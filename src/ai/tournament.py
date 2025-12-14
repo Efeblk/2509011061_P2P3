@@ -15,7 +15,9 @@ from src.ai.enrichment import get_ai_client
 from config.settings import settings
 
 
-def extract_list_from_response(data: any) -> list:
+from typing import List, Dict, Optional
+
+def extract_list_from_response(data: any) -> Optional[list]:
     """
     Robustly extract a list from AI response data.
     Handles direct lists, or lists wrapped in dicts (common with local models).
@@ -25,16 +27,18 @@ def extract_list_from_response(data: any) -> list:
 
     if isinstance(data, dict):
         # Common keys used by models
-        for key in ["uuids", "events", "results", "rankings", "candidates", "winners"]:
+        for key in ["uuids", "events", "results", "rankings", "candidates", "winners", "event_uuids"]:
             if key in data and isinstance(data[key], list):
                 return data[key]
 
         # Fallback: find ANY list value
-        for value in data.values():
+        for key, value in data.items():
             if isinstance(value, list):
                 return value
-
-    return []
+    
+    # If we get here, we couldn't find a list
+    logger.warning(f"Could not extract list from data: {data}")
+    return None
 
 
 async def run_stage_1_filter(events: List[Dict], criteria: str, dry_run: bool = False) -> List[Dict]:
@@ -59,7 +63,7 @@ async def run_stage_1_filter(events: List[Dict], criteria: str, dry_run: bool = 
     Events:
     {json.dumps(events, indent=2)}
     
-    Return JSON format only: ["uuid1", "uuid2"]
+    Return JSON format only: {{"uuids": ["uuid1", "uuid2"]}}
     """
 
     try:
@@ -68,9 +72,10 @@ async def run_stage_1_filter(events: List[Dict], criteria: str, dry_run: bool = 
 
         uuids = extract_list_from_response(response_data)
 
-        if not uuids:
+        if uuids is None:
             if response_data:
                 logger.warning(f"Stage 1: Could not find list in response: {type(response_data)}")
+                logger.error(f"Raw response data: {json.dumps(response_data, indent=2)}")
             return []
 
         # Filter original list
@@ -132,7 +137,7 @@ async def run_stage_2_finals(candidates: List[Dict], category_name: str, criteri
 
         final_list = extract_list_from_response(results)
 
-        if not final_list:
+        if final_list is None:
             if results:
                 logger.warning(f"Stage 2: Could not find list in response: {type(results)}")
             return []

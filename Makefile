@@ -1,4 +1,5 @@
 # Makefile for EventGraph project
+SHELL := /bin/bash
 
 .PHONY: help install setup clean clean-data fclean docker-up docker-down up down scrape view db-shell
 

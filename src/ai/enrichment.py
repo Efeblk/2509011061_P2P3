@@ -9,6 +9,7 @@ from src.ai.gemini_client import gemini_client
 from src.ai.ollama_client import ollama_client
 from src.models.event import EventNode
 from src.models.ai_summary import AISummaryNode
+from src.database.connection import db_connection
 
 
 def get_ai_client(use_reasoning: bool = False):
