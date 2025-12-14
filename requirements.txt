@@ -9,6 +9,7 @@ falkordb>=1.0.6
 
 # AI/ML
 google-generativeai>=0.3.2
+numpy>=1.26.0
 
 # Data Validation & Serialization
 pydantic>=2.5.0

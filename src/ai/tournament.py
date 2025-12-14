@@ -14,6 +14,28 @@ from src.ai.enrichment import get_ai_client
 from config.settings import settings
 
 
+
+def extract_list_from_response(data: any) -> list:
+    """
+    Robustly extract a list from AI response data.
+    Handles direct lists, or lists wrapped in dicts (common with local models).
+    """
+    if isinstance(data, list):
+        return data
+        
+    if isinstance(data, dict):
+        # Common keys used by models
+        for key in ["uuids", "events", "results", "rankings", "candidates", "winners"]:
+            if key in data and isinstance(data[key], list):
+                return data[key]
+        
+        # Fallback: find ANY list value
+        for value in data.values():
+            if isinstance(value, list):
+                return value
+                
+    return []
+
 async def run_stage_1_filter(events: List[Dict], criteria: str, dry_run: bool = False) -> List[Dict]:
     """
     Stage 1: Fast filtering using Local/Fast Model.
@@ -21,18 +43,8 @@ async def run_stage_1_filter(events: List[Dict], criteria: str, dry_run: bool = 
     Output: Subset of events that match criteria.
     """
 
-    # Switch to Gemini Flash for filtering (Smart + Cheap)
-    # Replaces Llama (Local) as per user request for "Reasoning" quality
-    from src.ai.gemini_client import GeminiClient
-    
-    if dry_run:
-        logger.info("[DRY RUN] Simulating Stage 1 filtering (selecting first 2 events)")
-        return events[:2] if events else []
-    
-    
-    # Use Flash for high-volume filtering
-    # note: ensuring using specific version to avoid 404
-    client = GeminiClient(model_name=settings.ai.model_fast) 
+    # Use configured AI client (Local or Cloud)
+    client = get_ai_client(use_reasoning=False)
     
     prompt = f"""
     You are a strict event curator. 
@@ -50,15 +62,16 @@ async def run_stage_1_filter(events: List[Dict], criteria: str, dry_run: bool = 
     """
     
     try:
-        response = client.generate(prompt)
-        # extracting json from response
-        clean_json = response.strip()
-        if "```json" in clean_json:
-            clean_json = clean_json.split("```json")[1].split("```")[0]
-        elif "```" in clean_json:
-            clean_json = clean_json.split("```")[1].split("```")[0]
-            
-        uuids = json.loads(clean_json)
+        # Use generate_json for robust parsing (works with both clients)
+        response_data = await client.generate_json(prompt, temperature=0.1)
+        
+        uuids = extract_list_from_response(response_data)
+        
+        if not uuids:
+            if response_data:
+                logger.warning(f"Stage 1: Could not find list in response: {type(response_data)}")
+            return []
+
         # Filter original list
         winners = [e for e in events if e['uuid'] in uuids]
         return winners
@@ -85,13 +98,8 @@ async def run_stage_2_finals(candidates: List[Dict], category_name: str, criteri
              })
         return mock_results
 
-    # Use Reasoning model (Gemini 3.0 Pro)
-    # We need to instantiate Gemini client explicitly if default is Llama
-    # But get_ai_client handles provider switching. We need to force provider=gemini and model=reasoning
-    
-    # Access settings directly or create custom client
-    from src.ai.gemini_client import GeminiClient
-    client = GeminiClient(model_name=settings.ai.model_reasoning) 
+    # Use Reasoning model (or Local equivalent)
+    client = get_ai_client(use_reasoning=True)
     
     prompt = f"""
     You are an expert lifestyle editor for a premium city guide.
@@ -116,15 +124,21 @@ async def run_stage_2_finals(candidates: List[Dict], category_name: str, criteri
     """
     
     try:
-        response = client.generate(prompt)
-        clean_json = response.strip()
-        if "```json" in clean_json:
-            clean_json = clean_json.split("```json")[1].split("```")[0]
-        elif "```" in clean_json:
-            clean_json = clean_json.split("```")[1].split("```")[0]
+        # Use reasoning model for Stage 2
+        model_override = None
+        if settings.ai.provider == "ollama":
+            model_override = settings.ollama.model_reasoning
             
-        results = json.loads(clean_json)
-        return results
+        results = await client.generate_json(prompt, temperature=0.4, model=model_override)
+        
+        final_list = extract_list_from_response(results)
+        
+        if not final_list:
+             if results:
+                logger.warning(f"Stage 2: Could not find list in response: {type(results)}")
+             return []
+            
+        return final_list
     except Exception as e:
         logger.error(f"Stage 2 failed: {e}")
         return []

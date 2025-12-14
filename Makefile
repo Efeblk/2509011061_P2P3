@@ -217,6 +217,10 @@ clean-ai:
 	@echo "🧹 Removing AI summaries..."
 	@export PYTHONPATH=. && venv/bin/python src/scripts/clean_ai.py
 
+clean-collections:
+	@echo "🧹 Removing Collections..."
+	@export PYTHONPATH=. && venv/bin/python src/scripts/clean_collections.py
+
 # Default limit covers all events
 LIMIT ?= 10000
 FORCE ?= 

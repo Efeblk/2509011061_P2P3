@@ -13,14 +13,15 @@ from src.models.ai_summary import AISummaryNode
 
 def get_ai_client(use_reasoning: bool = False):
     """Factory to get the configured AI client."""
-    # Reasoning always uses Gemini (for now, as per plan)
+    # If provider is Ollama, use it for everything (including reasoning)
+    if settings.ai.provider == "ollama":
+        return ollama_client
+
+    # Reasoning uses Gemini (if not local)
     if use_reasoning:
         from src.ai.gemini_client import GeminiClient
         return GeminiClient(model_name=settings.ai.model_reasoning)
         
-    # Fast/Standard uses configured provider
-    if settings.ai.provider == "ollama":
-        return ollama_client
     return gemini_client
 
 

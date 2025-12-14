@@ -62,26 +62,28 @@ class OllamaClient:
             logger.error(f"Error generating embedding with Ollama: {e}")
             return None
 
-    async def generate(self, prompt: str, temperature: float = 0.7) -> Optional[str]:
+    async def generate(self, prompt: str, temperature: float = 0.7, model: Optional[str] = None) -> Optional[str]:
         """
         Generate text completion.
 
         Args:
             prompt: Input prompt
             temperature: Creativity (0-1)
+            model: Optional model override
 
         Returns:
             Generated text or None if failed
         """
-        return await self._generate_request(prompt, temperature=temperature, format=None)
+        return await self._generate_request(prompt, temperature=temperature, format=None, model=model)
 
-    async def generate_json(self, prompt: str, temperature: float = 0.3) -> Optional[dict]:
+    async def generate_json(self, prompt: str, temperature: float = 0.3, model: Optional[str] = None) -> Optional[dict]:
         """
         Generate JSON response.
 
         Args:
             prompt: Input prompt
             temperature: Creativity
+            model: Optional model override
 
         Returns:
             Parsed JSON dict or None if failed
@@ -91,7 +93,7 @@ class OllamaClient:
         if "json" not in prompt.lower():
             json_prompt += "\nRespond strictly with VALID JSON."
 
-        result = await self._generate_request(json_prompt, temperature=temperature, format="json")
+        result = await self._generate_request(json_prompt, temperature=temperature, format="json", model=model)
 
         if not result:
             return None
@@ -102,14 +104,14 @@ class OllamaClient:
             logger.error(f"Failed to parse JSON from Ollama: {result[:100]}...")
             return None
 
-    async def _generate_request(self, prompt: str, temperature: float, format: Optional[str] = None) -> Optional[str]:
+    async def _generate_request(self, prompt: str, temperature: float, format: Optional[str] = None, model: Optional[str] = None) -> Optional[str]:
         """Internal method for generation request."""
         import asyncio
         
         try:
             url = f"{self.base_url}/api/generate"
             payload = {
-                "model": self.model,
+                "model": model or self.model,
                 "prompt": prompt,
                 "stream": False,
                 "options": {

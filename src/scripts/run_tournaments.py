@@ -33,7 +33,7 @@ import argparse
 
 async def main():
     parser = argparse.ArgumentParser(description="Run AI Tournaments")
-    parser.add_argument("--limit", type=int, default=1000, help="Max candidates per tournament")
+    parser.add_argument("--limit", type=int, default=0, help="Max candidates per tournament (0 = no limit)")
     parser.add_argument("--dry-run", action="store_true", help="Simulate without API calls")
     args = parser.parse_args()
 
