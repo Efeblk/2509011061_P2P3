@@ -314,7 +314,7 @@ class TestLiveAISummaryVerification:
 
         if count == 0:
             pytest.skip("No AI summaries found in database. Enrichment process hasn't run.")
-            
+
         assert count > 0
         print(f"\nFound {count} AI summaries in database.")
 
