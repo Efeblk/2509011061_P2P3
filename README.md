@@ -45,6 +45,8 @@ Edit the `.env` file created during setup.
 # .env
 AI_LOCAL=ollama
 OLLAMA_MODEL=llama3.2
+OLLAMA_MODEL_EMBEDDING=mxbai-embed-large
+LOCAL_AI_REASONING=mistral-nemo
 GEMINI_API_KEY=your_api_key_here  # Get from https://makersuite.google.com/app/apikey
 AI_MODEL_FAST=gemini-2.5-flash
 AI_MODEL_REASONING=gemini-2.5-pro
@@ -53,6 +55,8 @@ AI_MODEL_REASONING=gemini-2.5-pro
 If you have [Ollama](https://ollama.com) installed:
 ```bash
 ollama pull llama3.2
+ollama pull mxbai-embed-large
+ollama pull mistral-nemo
 ollama serve  # Start Ollama server
 ```
 
