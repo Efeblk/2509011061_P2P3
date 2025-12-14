@@ -111,49 +111,59 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
     # has_description = event.description and len(event.description.strip()) > 10
     # if not has_description and not reviews_section and not force: ...
 
-    # Final check: If no description and no reviews/AI summary, SKIP (unless forced)
-    # COST SAVING: Skip data-poor events by default to save time/money.
-    # User can override this with --force flag.
-    has_description = event.description and len(event.description.strip()) > 10
-
-    if not has_description and not reviews_section and not force:
-        logger.debug(f"Skipping low-quality event (no description/reviews): {event.title}")
-        return None
-
-    # Build prompt
-    prompt = SUMMARY_PROMPT_TEMPLATE.format(
-        title=event.title or "Unknown",
-        category=event.category or "Uncategorized",
-        description=(event.description[:1000] + "...") if event.description else "No description",
-        venue=event.venue or "Unknown venue",
-        city=event.city or "Unknown city",
-        price=event.price or 0,
-        category_prices=event.category_prices or "Not available",
-        rating="N/A",
-        review_count=len(reviews) if reviews else 0,
-        reviews_section=reviews_section or "No reviews available.",
-    )
-
-    # Generate summary
+    # Initialize client first
     client = get_ai_client()
-    summary_data = await client.generate_json(prompt, temperature=0.3)
 
-    if not summary_data:
-        logger.error(f"Failed to generate summary for: {event.title}")
-        return None
-
-    # Generate embedding for the event (optional - may hit rate limits)
+    # Generate embedding for the event (always do this if enabled)
     embedding_json = None
     if settings.ai.enable_embeddings:
         try:
-            embedding_text = f"{event.title}. {event.description or ''}"
+            # Use Title + Category + Description (even if short)
+            embedding_text = f"{event.title}. {event.category or ''}. {event.description or ''}"
             embedding_vector = client.embed(embedding_text)
             embedding_json = json.dumps(embedding_vector) if embedding_vector else None
         except Exception as e:
             logger.warning(f"Could not generate embedding (quota/rate limit): {e}")
+
+    # Final check: If no description and no reviews/AI summary, SKIP LLM SUMMARY
+    # But we still save the embedding if we have one.
+    has_description = event.description and len(event.description.strip()) > 10
+    
+    summary_data = {}
+    skipped_llm = False
+
+    if not has_description and not reviews_section and not force:
+        logger.debug(f"Skipping LLM summary for low-quality event: {event.title}")
+        skipped_llm = True
+        # We will save a partial node with just the embedding
     else:
-        logger.debug("Skipping embedding generation (disabled in settings)")
-        # Continue without embedding - we can add it later
+        # Build prompt
+        prompt = SUMMARY_PROMPT_TEMPLATE.format(
+            title=event.title or "Unknown",
+            category=event.category or "Uncategorized",
+            description=(event.description[:1000] + "...") if event.description else "No description",
+            venue=event.venue or "Unknown venue",
+            city=event.city or "Unknown city",
+            price=event.price or 0,
+            category_prices=event.category_prices or "Not available",
+            rating="N/A",
+            review_count=len(reviews) if reviews else 0,
+            reviews_section=reviews_section or "No reviews available.",
+        )
+
+        # Generate summary
+        summary_data = await client.generate_json(prompt, temperature=0.3)
+
+        if not summary_data:
+            logger.error(f"Failed to generate summary for: {event.title}")
+            # If we have an embedding, we can still save it? 
+            # Ideally yes, but let's treat LLM failure as a soft fail for now unless we have embedding.
+            if not embedding_json:
+                return None
+
+    # If we skipped LLM and have no embedding, then we really have nothing.
+    if skipped_llm and not embedding_json:
+        return None
 
     # Create AISummaryNode
     try:
@@ -162,7 +172,7 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
             quality_score=summary_data.get("quality_score"),
             importance=summary_data.get("importance"),
             value_rating=summary_data.get("value_rating"),
-            sentiment_summary=summary_data.get("sentiment_summary"),
+            sentiment_summary=summary_data.get("sentiment_summary") or ("Vector-indexed only" if skipped_llm else None),
             key_highlights=json.dumps(summary_data.get("key_highlights") or []),
             concerns=json.dumps(summary_data.get("concerns") or []),
             best_for=",".join(summary_data.get("best_for") or []),
@@ -172,7 +182,7 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
             tourist_attraction=summary_data.get("tourist_attraction", False),
             bucket_list_worthy=summary_data.get("bucket_list_worthy", False),
             embedding=embedding_json,
-            summary_json=json.dumps(summary_data),
+            summary_json=json.dumps(summary_data) if summary_data else None,
             model_version="gemini-1.5-flash",
             prompt_version="v1",
         )
@@ -181,7 +191,10 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
         saved = await summary.save()
 
         if saved:
-            logger.debug(f"✓ Summary created for: {event.title}")
+            if skipped_llm:
+                 logger.debug(f"✓ Embedding created (LLM skipped) for: {event.title}")
+            else:
+                 logger.debug(f"✓ Summary created for: {event.title}")
             return saved
         else:
             logger.error(f"Failed to save summary for: {event.title}")

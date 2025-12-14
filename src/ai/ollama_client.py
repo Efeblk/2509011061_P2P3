@@ -48,7 +48,7 @@ class OllamaClient:
         try:
             url = f"{self.base_url}/api/embeddings"
             payload = {
-                "model": self.model,
+                "model": settings.ollama.model_embedding,
                 "prompt": text
             }
             

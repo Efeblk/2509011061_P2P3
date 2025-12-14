@@ -52,6 +52,7 @@ class OllamaSettings(BaseSettings):
     base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
     model: str = Field(default="llama3.2", alias="OLLAMA_MODEL")
     model_reasoning: str = Field(default="mistral-nemo", alias="LOCAL_AI_REASONING")
+    model_embedding: str = Field(default="mxbai-embed-large", alias="OLLAMA_MODEL_EMBEDDING")
 
     model_config = SettingsConfigDict(
         env_file=".env",

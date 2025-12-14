@@ -43,17 +43,18 @@ async def identify_intent(query: str) -> Optional[str]:
     prompt = f"""
     You are an intent classifier.
     
-    Categories:
-    - best-value
-    - date-night
-    - hidden-gems
-    - this-weekend
-    - search (use this for specific topics like 'jazz', 'mozart', 'workshops', 'cinema')
+    STRICT Categories:
+    - best-value: ONLY for "cheap", "budget", "free", "value".
+    - date-night: ONLY for "date", "romantic", "couple".
+    - this-weekend: ONLY for "weekend", "friday", "saturday", "sunday".
+    - hidden-gems: ONLY for "hidden", "secret", "underground".
+    
+    - search: EVERYTHING ELSE. Use this for specific topics (jazz, kids, workshops, atölye), vibes (dark, happy), or general questions.
     
     Query: "{query}"
     
     Task: Return ONLY the category slug. 
-    If the query is for a specific topic rather than a vibe, return "search".
+    If in doubt, return "search".
     """
     
     try:
@@ -110,6 +111,12 @@ async def search_events(query: str):
             vec = json.loads(s.embedding)
             # Cosine Similarity
             score = np.dot(query_vec, vec) / (np.linalg.norm(query_vec) * np.linalg.norm(vec))
+            
+            # DEBUG: Check specific event
+            if s.sentiment_summary and "Vector-indexed" in s.sentiment_summary:
+                 if score > 0.1:
+                     print(f"DEBUG: Vector-indexed event score: {score}")
+                 
             results.append((score, s))
         except Exception:
             continue
