@@ -17,6 +17,7 @@ from config.settings import settings
 
 from typing import List, Dict, Optional
 
+
 def extract_list_from_response(data: any) -> Optional[list]:
     """
     Robustly extract a list from AI response data.
@@ -35,7 +36,7 @@ def extract_list_from_response(data: any) -> Optional[list]:
         for key, value in data.items():
             if isinstance(value, list):
                 return value
-    
+
     # If we get here, we couldn't find a list
     logger.warning(f"Could not extract list from data: {data}")
     return None

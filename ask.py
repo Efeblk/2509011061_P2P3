@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """
-Interactive Event Assistant CLI.
+Interactive Event Assistant CLI (Rich UI).
 """
 import sys
 import asyncio
 import argparse
 from loguru import logger
+
+# Rich Imports
+from rich.console import Console
+from rich.panel import Panel
+from rich.markdown import Markdown
+from rich.prompt import Prompt
+from rich.table import Table
+from rich import box
+from rich.text import Text
 
 # Disable aggressive logging for CLI experience
 logger.remove()
@@ -13,82 +22,140 @@ logger.add(sys.stderr, level="ERROR")
 
 from src.ai.assistant import EventAssistant, CATEGORIES
 
+# Initialize Console
+console = Console()
+
+
+def display_welcome():
+    """Display welcome message."""
+    console.print()
+    console.print(
+        Panel.fit(
+            "[bold cyan]👋 Hi! I'm your Event AI.[/bold cyan]\n"
+            "[dim]I can help you find events, plan dates, or discover hidden gems.[/dim]\n\n"
+            "[yellow]Type 'exit' to stop.[/yellow]",
+            title="EventGraph AI",
+            border_style="cyan",
+        )
+    )
+    console.print()
+
+
+def display_event_card(event: dict, score: float = None, reason: str = None):
+    """Display a single event as a card."""
+    title = f"[bold white]{event.get('title', 'Unknown Event')}[/bold white]"
+    venue = event.get("venue") or "Unknown Venue"
+    city = event.get("city") or "Unknown City"
+    date = event.get("date") or "Unknown Date"
+    price = event.get("price")
+
+    # Format Price
+    if price == 0:
+        price_str = "[bold green]FREE[/bold green]"
+    elif price:
+        price_str = f"[bold yellow]{price} TL[/bold yellow]"
+    else:
+        price_str = "[dim]Price N/A[/dim]"
+
+    # Meta info line
+    meta = f"📍 {city}  🏠 {venue}  🗓️  {date}  💰 {price_str}"
+
+    # Content
+    content = [meta]
+
+    if reason:
+        content.append(f"\n[italic cyan]🏆 {reason}[/italic cyan]")
+
+    if event.get("summary"):
+        content.append(f"\n[dim]{event['summary'][:200]}...[/dim]")
+
+    # Footer (Score)
+    footer = None
+    if score:
+        match_percent = int(score * 100)
+        color = "green" if match_percent > 80 else "yellow" if match_percent > 50 else "red"
+        footer = f"[bold {color}]Match: {match_percent}%[/bold {color}]"
+
+    console.print(
+        Panel(
+            "\n".join(content),
+            title=title,
+            subtitle=footer,
+            border_style="blue",
+            expand=False,
+        )
+    )
+
 
 async def main():
     parser = argparse.ArgumentParser(description="Event Assistant")
     parser.add_argument("query", type=str, nargs="?", help="Initial query")
     args = parser.parse_args()
 
-    print("\n👋 Hi! I'm your Event AI. I can help you find events, plan dates, or discover hidden gems.")
-    print("   Type 'exit' or 'quit' to stop.\n")
+    display_welcome()
 
-    assistant = EventAssistant()
+    with console.status("[bold green]Initializing AI...[/bold green]"):
+        assistant = EventAssistant()
 
     # If initial query provided, process it first
     initial_query = args.query
 
     while True:
-        if initial_query:
-            query = initial_query
-            initial_query = None  # Clear after first run
-        else:
-            try:
-                query = input("\n>> What are you looking for? ").strip()
-            except (KeyboardInterrupt, EOFError):
-                print("\n👋 Goodbye!")
+        try:
+            if initial_query:
+                query = initial_query
+                console.print(f"\n[bold cyan]>> {query}[/bold cyan]")
+                initial_query = None
+            else:
+                query = Prompt.ask("\n[bold cyan]>> What are you looking for?[/bold cyan]")
+
+            query = query.strip()
+            if not query:
+                continue
+
+            if query.lower() in ["exit", "quit", "q"]:
+                console.print("[bold green]👋 Goodbye![/bold green]")
                 break
 
-        if not query:
-            continue
+            with console.status("[bold yellow]Thinking...[/bold yellow]", spinner="dots"):
+                # 1. Identify Intent
+                intent = await assistant.identify_intent(query)
 
-        if query.lower() in ["exit", "quit", "q"]:
-            print("👋 Goodbye!")
+                if intent and intent != "search":
+                    # Handle Collection
+                    cat_name = CATEGORIES.get(intent, intent)
+                    console.print(f"\n[bold magenta]💡 Found a curated collection: {cat_name}[/bold magenta]\n")
+
+                    events = await assistant.get_collection(intent)
+                    if not events:
+                        console.print("[red]❌ No events found in this collection.[/red]")
+                    else:
+                        for e in events:
+                            display_event_card(e, reason=e.get("reason"))
+                else:
+                    # Handle Search (Hybrid + RAG)
+                    results = await assistant.search(query)
+                    answer = await assistant.generate_answer(query, results)
+
+                    # Print Answer as Markdown
+                    console.print(Panel(Markdown(answer), title="🤖 AI Response", border_style="green"))
+
+                    if results:
+                        console.print("\n[bold white]📚 Source Events:[/bold white]")
+                        # Fetch details for display
+                        for score, summary in results[:5]:
+                            details = await assistant._fetch_event_details(summary.event_uuid)
+                            if details:
+                                display_event_card(details, score=score)
+                    else:
+                        console.print("[dim]No specific events found directly matching criteria.[/dim]")
+
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[bold green]👋 Goodbye![/bold green]")
             break
-
-        print(f"🤔 Thinking...")
-
-        # 1. Identify Intent (Collection vs Search)
-        intent = await assistant.identify_intent(query)
-
-        if intent and intent != "search":
-            # Handle Collection
-            cat_name = CATEGORIES.get(intent, intent)
-            print(f"💡 Found a curated collection: {cat_name}\n")
-
-            events = await assistant.get_collection(intent)
-            if not events:
-                print("❌ No events found in this collection.")
-            else:
-                for e in events:
-                    print(f"📍 {e['title']}")
-                    print(f"   🏠 {e['venue']} | 🗓️ {e['date']} | 💰 {e['price']}")
-                    print(f"   🏆 {e['reason']}")
-                    if e.get("summary"):
-                        print(f"   📝 {e['summary']}")
-                    print("-" * 60)
-        else:
-            # Handle Search (Hybrid + RAG)
-            # 1. Search
-            results = await assistant.search(query)
-
-            # 2. Generate Answer
-            answer = await assistant.generate_answer(query, results)
-
-            print(f"\n🤖 {answer}\n")
-
-            if results:
-                print("📚 Source Events:")
-                print("-" * 60)
-                # Fetch details for display
-                for score, summary in results[:5]:
-                    details = await assistant._fetch_event_details(summary.event_uuid)
-                    if details:
-                        print(f"📍 {details['title']}")
-                        print(f"   🏠 {details['venue']} | 🗓️ {details['date']} | 💰 {details['price']}")
-                        print(f"   Match: {int(score*100)}%")
-                        print("-" * 60)
-            else:
-                print("❌ No matching events found.")
+        except Exception as e:
+            console.print(f"[bold red]Error:[/bold red] {e}")
+            logger.exception(e)
 
 
 if __name__ == "__main__":

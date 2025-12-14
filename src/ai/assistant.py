@@ -31,6 +31,7 @@ class EventAssistant:
     def __init__(self):
         self.client = get_ai_client(use_reasoning=False)
         self.reasoning_client = get_ai_client(use_reasoning=True)
+        self.history = []  # Store conversation history
 
     async def identify_intent(self, query: str) -> Optional[str]:
         """Classifies user query into one of the known categories."""
@@ -337,8 +338,15 @@ class EventAssistant:
 
         context_str = "\n".join(events_context)
 
+        # Format history
+        history_str = ""
+        if self.history:
+            history_str = "Conversation History:\n" + "\n".join([f"{role}: {msg}" for role, msg in self.history[-6:]])
+
         prompt = f"""
         You are a helpful event assistant.
+        
+        {history_str}
         
         User Query: "{query}"
         
@@ -351,23 +359,36 @@ class EventAssistant:
         - If the user asked for a plan (e.g. "date night"), propose a plan.
         - Mention prices and dates where relevant.
         - Do NOT make up events not in the list.
+        - If the user refers to previous events (e.g. "the first one"), use the history to understand context.
         """
 
         try:
             response = await self.reasoning_client.generate(prompt)
-            return response or "Here are the events I found."
+            answer = response or "Here are the events I found."
+
+            # Update history
+            self.history.append(("User", query))
+            self.history.append(("AI", answer))
+
+            return answer
         except Exception as e:
             logger.error(f"Answer generation failed: {e}")
             return "Here are the events I found."
 
     async def _fetch_event_details(self, uuid: str) -> Optional[Dict[str, Any]]:
         """Helper to fetch event details by UUID."""
-        query = "MATCH (e:Event {uuid: $uuid}) RETURN e.title, e.venue, e.date, e.price"
+        query = "MATCH (e:Event {uuid: $uuid}) RETURN e.title, e.venue, e.date, e.price, e.city"
         try:
             res = db_connection.execute_query(query, {"uuid": uuid})
             if res and res.result_set:
                 row = res.result_set[0]
-                return {"title": row[0], "venue": row[1], "date": row[2], "price": row[3]}
+                return {
+                    "title": row[0],
+                    "venue": row[1],
+                    "date": row[2],
+                    "price": row[3],
+                    "city": row[4],
+                }
             return None
         except Exception:
             return None
