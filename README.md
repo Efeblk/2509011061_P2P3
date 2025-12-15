@@ -11,14 +11,20 @@ Finds the best events from Biletix and Biletinial, filters out the noise using L
 - **Graph Database**: Powered by FalkorDB for relationship mapping (Event -> Venue -> Category).
 - **Natural Language Search**: Ask "Where should I go for a cheap date?" and get curated answers.
 
+> [!WARNING]
+> **Service Status Notice**: 
+> - **Biletix**: Currently **disabled** due to poor data context quality.
+> - **Google Gemini**: Currently **disabled** due to high operational costs.
+> *These services may be restored in future updates.*
+
 ---
 
 ## 🛠️ Prerequisites
 
 - **Python 3.11+**
 - **Docker** (for the database)
-- **Google Gemini API Key** (for reliable reasoning)
-- *(Optional)* **Ollama** (for local/free inference)
+- **Ollama** (Required for local inference)
+- *(Optional)* **Google Gemini API Key** (for cloud reasoning)
 
 ---
 
@@ -38,27 +44,28 @@ make setup
 ```
 *This installs python packages, Playwright browsers, and starts the FalkorDB container.*
 
-### 3. Configure AI
-Edit the `.env` file created during setup.
+### 3. Configure AI (Default: Local Privacy)
+The project is configured to use **Ollama** by default for 100% local, private processing.
 
-```env
-# .env
-AI_LOCAL=ollama
-OLLAMA_MODEL=llama3.2
-OLLAMA_MODEL_EMBEDDING=mxbai-embed-large
-LOCAL_AI_REASONING=mistral-nemo
-GEMINI_API_KEY=your_api_key_here  # Get from https://makersuite.google.com/app/apikey
-AI_MODEL_FAST=gemini-2.5-flash
-AI_MODEL_REASONING=gemini-2.5-pro
-```
+1.  **Install & Serve Ollama**:
+    ```bash
+    # Install from ollama.com, then run:
+    ollama serve
+    ```
 
-If you have [Ollama](https://ollama.com) installed:
-```bash
-ollama pull llama3.2
-ollama pull mxbai-embed-large
-ollama pull mistral-nemo
-ollama serve  # Start Ollama server
-```
+2.  **Pull Required Models**:
+    ```bash
+    ollama pull llama3.2
+    ollama pull mxbai-embed-large
+    ollama pull mistral-nemo
+    ```
+
+3.  **Check `.env`**:
+    Ensure `AI_LOCAL=ollama` is set (this is the default).
+
+*(Optional)* To use Google Gemini instead:
+1.  Get an API Key from [Google AI Studio](https://makersuite.google.com/app/apikey).
+2.  Set `GEMINI_API_KEY=your_key` and `AI_LOCAL=gemini` in `.env`.
 
 **Hardware Recommendations for Local AI (Ollama):**
 - **Minimum**: 4GB RAM, 2 CPU cores → Set `AI_CONCURRENCY=2`
@@ -177,10 +184,14 @@ The AI generates:
 - Use `LIMIT=100` to test settings before full run
 - Monitor system resources: `htop` or `top`
 
+## 📚 Documentation
+- [**Scraped Websites**](docs/scraped_websites.md): Details on supported sources and categories.
+
 ## 📁 Project Structure
 
 - `src/scrapers/`: Spiders for Biletix/Biletinial (Scrapy)
 - `src/ai/`: Clients for Gemini and Ollama
 - `src/models/`: Data classes for Graph Nodes (Event, Venue)
 - `src/scripts/`: Utilities for running tournaments and enrichment
+- `docs/`: Documentation and guides
 - `ask.py`: The CLI entry point
