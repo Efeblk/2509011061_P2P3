@@ -249,6 +249,36 @@ class FalkorDBPipeline:
                         msg += " + ".join(parts) + f" for event: {event.title}"
                         logger.info(msg)
 
+                # Save extracted entities (Knowledge Graph)
+                if item.get("extracted_entities"):
+                    logger.info(f"🕸️  Saving {len(item['extracted_entities'])} extracted entities for: {event.title}")
+                    
+                    from src.models.person import PersonNode
+                    
+                    for entity in item["extracted_entities"]:
+                        name = entity.get("name")
+                        role = entity.get("role")
+                        
+                        if name and role:
+                            # 1. Find or create Person (async safe via to_thread)
+                            # Note: find_by_name uses db_connection which is thread-safe
+                            try:
+                                # We need to run these DB operations in a thread because they use requests/socket
+                                
+                                # Define a helper for the thread
+                                def save_entity_logic(n, r, e_uuid):
+                                    person = PersonNode.find_by_name(n)
+                                    if not person:
+                                        person = PersonNode(name=n)
+                                        person.save()
+                                    person.save_relationship(e_uuid, r)
+                                    return True
+
+                                await asyncio.to_thread(save_entity_logic, name, role, event.uuid)
+                                
+                            except Exception as e:
+                                logger.warning(f"Failed to save entity {name} ({role}): {e}")
+
             else:
                 self.events_failed += 1
                 logger.error(f"✗ Failed to save event: {event.title}")

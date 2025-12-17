@@ -224,6 +224,31 @@ class EventNode(Node):
             logger.warning(f"Failed to get reviews for event {self.title}: {e}")
             return []
 
+    async def get_relationships(self) -> List[Dict[str, str]]:
+        """Get related people (Cast, Crew, etc.) for this event."""
+        from src.database.connection import db_connection
+
+        try:
+            query = """
+                MATCH (p:Person)-[r]->(e:Event {uuid: $uuid})
+                RETURN p.name, type(r)
+            """
+            result = db_connection.execute_query(query, {"uuid": self.uuid})
+
+            relationships = []
+            if result.result_set:
+                for row in result.result_set:
+                    relationships.append({
+                        "name": row[0],
+                        "role": row[1]
+                    })
+
+            return relationships
+
+        except Exception as e:
+            logger.warning(f"Failed to get relationships for event {self.title}: {e}")
+            return []
+
     def __repr__(self) -> str:
         """String representation of the event."""
         return f"EventNode(title='{self.title}', date='{self.date}', venue='{self.venue}')"

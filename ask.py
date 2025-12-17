@@ -67,7 +67,10 @@ def display_event_card(event: dict, score: float = None, reason: str = None):
         content.append(f"\n[italic cyan]🏆 {reason}[/italic cyan]")
 
     if event.get("summary"):
-        content.append(f"\n[dim]{event['summary'][:200]}...[/dim]")
+        summary_text = event['summary']
+        # Deduplicate if reason is same as summary
+        if not reason or (reason and summary_text not in reason and reason not in summary_text):
+             content.append(f"\n[dim]{summary_text[:300]}...[/dim]")
 
     # Footer (Score)
     footer = None

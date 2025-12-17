@@ -47,7 +47,7 @@ Create a JSON summary (be concise and honest):
     "quality_score": 0-10,
     "importance": "must-see" | "iconic" | "popular" | "niche" | "seasonal" | "emerging",
     "value_rating": "excellent" | "good" | "fair" | "expensive",
-    "sentiment_summary": "one sentence capturing review sentiment",
+    "sentiment_summary": "Two sentences capturing the essence and vibe of the event. Be descriptive.",
     "key_highlights": ["highlight1", "highlight2", "highlight3"],
     "concerns": ["concern1", "concern2"] or null if none,
     "best_for": ["audience1", "audience2", "audience3"],
@@ -139,7 +139,26 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
     summary_data = {}
     skipped_llm = False
 
-    if not has_description and not reviews_section and not force:
+    # Fetch graph relationships (Cast, Crew, etc.)
+    key_people_section = ""
+    try:
+        relationships = await event.get_relationships()
+        if relationships:
+            people_map = {}
+            for r in relationships:
+                role = r["role"]
+                name = r["name"]
+                if role not in people_map:
+                    people_map[role] = []
+                people_map[role].append(name)
+            
+            key_people_section = "KEY PEOPLE (Verified):\n"
+            for role, names in people_map.items():
+                key_people_section += f"{role}: {', '.join(names)}\n"
+    except Exception as e:
+        logger.warning(f"Failed to fetch relationships for summary: {e}")
+
+    if not has_description and not reviews_section and not key_people_section and not force:
         logger.debug(f"Skipping LLM summary for low-quality event: {event.title}")
         skipped_llm = True
         # We will save a partial node with just the embedding
@@ -155,7 +174,7 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
             category_prices=event.category_prices or "Not available",
             rating="N/A",
             review_count=len(reviews) if reviews else 0,
-            reviews_section=reviews_section or "No reviews available.",
+            reviews_section=(key_people_section + "\n" + (reviews_section or "No reviews available.")),
         )
 
         # Generate summary
@@ -179,7 +198,7 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
             quality_score=summary_data.get("quality_score"),
             importance=summary_data.get("importance"),
             value_rating=summary_data.get("value_rating"),
-            sentiment_summary=summary_data.get("sentiment_summary") or ("Vector-indexed only" if skipped_llm else None),
+            sentiment_summary=summary_data.get("sentiment_summary") or ("Event details available for search." if skipped_llm else None),
             key_highlights=json.dumps(summary_data.get("key_highlights") or []),
             concerns=json.dumps(summary_data.get("concerns") or []),
             best_for=",".join(summary_data.get("best_for") or []),

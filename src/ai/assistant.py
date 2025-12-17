@@ -35,6 +35,7 @@ class EventAssistant:
 
     async def identify_intent(self, query: str) -> Optional[str]:
         """Classifies user query into one of the known categories."""
+        from src.ai.schemas import IntentResponse, EventIntent
 
         # Simple keyword shortcuts for speed/cost
         q = query.lower()
@@ -51,60 +52,25 @@ class EventAssistant:
         prompt = f"""
         You are an intent classifier.
         
-        STRICT Categories:
-        - best-value: ONLY for "cheap", "budget", "free", "value".
-        - date-night: ONLY for "date", "romantic", "couple".
-        - this-weekend: ONLY for "weekend", "friday", "saturday", "sunday".
-        - hidden-gems: ONLY for "hidden", "secret", "underground".
-        
-        - search: EVERYTHING ELSE. Use this for specific topics (jazz, kids, workshops, atölye), vibes (dark, happy), or general questions.
-        
         Query: "{query}"
         
-        Task: Return ONLY the category slug. 
-        If in doubt, return "search".
+        Classify the user's intent into one of the available categories.
+        If the query is specific (e.g. "Jazz concerts", "Workshops in Kadikoy"), classify as SEARCH.
+        Only use specific categories if the query strongly matches the vibe.
         """
 
         try:
-            response = await self.client.generate(prompt, temperature=0.1)
+            response = await self.client.generate_json(prompt, temperature=0.1, schema=IntentResponse)
             if not response:
                 return None
 
-            # Clean response
-            slug = response.strip().lower()
-
-            # Extract slug if embedded in text
-            for cat in CATEGORIES:
-                if cat in slug:
-                    return cat
-
-            if "search" in slug:
+            intent = response.get("intent")
+            
+            if intent == EventIntent.SEARCH:
                 return None
+            
+            return intent
 
-            # If the query contains specific constraints (price, city, specific topic), prefer search
-            # unless it's a very generic "what to do this weekend" query.
-            complex_keywords = [
-                "istanbul",
-                "ankara",
-                "tl",
-                "concert",
-                "jazz",
-                "workshop",
-                "atölye",
-                "sinema",
-                "tiyatro",
-            ]
-            is_complex = any(k in slug for k in complex_keywords) or any(k in query.lower() for k in complex_keywords)
-
-            if is_complex and slug in CATEGORIES:
-                # If it matches a category but has specific constraints, force search
-                # e.g. "Jazz concerts this weekend" -> should be search, not just generic "this-weekend" collection
-                return None
-
-            if slug in CATEGORIES:
-                return slug
-
-            return None  # Trigger search
         except Exception as e:
             logger.error(f"Intent classification failed: {e}")
             return None
@@ -112,120 +78,55 @@ class EventAssistant:
     async def extract_filters(self, query: str) -> Dict[str, Any]:
         """
         Extracts structured filters from natural language query.
-        Returns JSON: {
-            "max_price": float | None,
-            "city": str | None,
-            "date_range": {"start": str, "end": str} | None, # ISO format
-            "category": str | None
-        }
         """
         from datetime import datetime
+        from src.ai.schemas import SearchFilters
 
         today = datetime.now().strftime("%Y-%m-%d")
         day_name = datetime.now().strftime("%A")
 
         prompt = f"""
-        You are a query parser. Extract filters from the user's search query.
+        You are a smart query parser. Extract search filters from the user's query into JSON.
         
         Current Date: {today} ({day_name})
         
         Query: "{query}"
         
-        Task: Return a JSON object with these keys (use null if not specified):
-        - max_price: number (e.g. 500)
-        - city: string (e.g. "Istanbul", "Ankara")
-        - category: string (e.g. "Jazz", "Theater", "Workshop")
-        - date_range: object with "start" and "end" in YYYY-MM-DD format.
-          - "this weekend": next Friday to Sunday.
-          - "tomorrow": {today} + 1 day.
-          - "next week": next Monday to Sunday.
+        Rules:
+        1. max_price: Extract number if user mentions price/budget (e.g. "under 500" -> 500).
+        2. city: Extract city name (e.g. "Istanbul", "Ankara").
+        3. category: Extract event type (e.g. "Jazz", "Theater", "Concert").
+        4. date_range: Calculate start/end dates (YYYY-MM-DD) based on Current Date.
+           - "tomorrow" -> start=end={today} + 1 day
+           - "this weekend" -> next Friday to Sunday
+           - If no date mentioned, set to null.
         
-        IMPORTANT:
-        - ONLY extract filters explicitly mentioned in the query.
-        - If the user does NOT mention a date/time, set date_range to null.
-        - If the user does NOT mention a city, set city to null.
-        - If the user mentions a city NOT in Turkey (e.g. "Mars", "London"), extract it anyway as "city".
-        - Handle Turkish date terms: "hafta sonu" -> "this weekend", "yarın" -> "tomorrow".
-        
-        Return ONLY valid JSON.
+        Examples:
+        - "Jazz in Istanbul under 500TL" -> {{"max_price": 500, "city": "Istanbul", "category": "Jazz", "date_range": null}}
+        - "Events tomorrow" -> {{"date_range": {{"start": "...", "end": "..."}}, "max_price": null, "city": null, "category": null}}
         """
 
         try:
             # Use reasoning client for better instruction following
-            response = await self.reasoning_client.generate_json(prompt)
+            response = await self.reasoning_client.generate_json(prompt, schema=SearchFilters)
             if not response:
                 return {}
 
-            # Code-level Safeguard: Discard date_range if no date keywords found
-            # This prevents "implicit" date filters (hallucinations)
-            q_lower = query.lower()
-            date_keywords = [
-                "today",
-                "tomorrow",
-                "tonight",
-                "weekend",
-                "week",
-                "month",
-                "year",
-                "bugün",
-                "yarın",
-                "akşam",
-                "gece",
-                "hafta",
-                "ay",
-                "yıl",
-                "monday",
-                "tuesday",
-                "wednesday",
-                "thursday",
-                "friday",
-                "saturday",
-                "sunday",
-                "pazartesi",
-                "salı",
-                "çarşamba",
-                "perşembe",
-                "cuma",
-                "cumartesi",
-                "pazar",
-                "ocak",
-                "şubat",
-                "mart",
-                "nisan",
-                "mayıs",
-                "haziran",
-                "temmuz",
-                "ağustos",
-                "eylül",
-                "ekim",
-                "kasım",
-                "aralık",
-                "jan",
-                "feb",
-                "mar",
-                "apr",
-                "may",
-                "jun",
-                "jul",
-                "aug",
-                "sep",
-                "oct",
-                "nov",
-                "dec",
-            ]
+            # Clean up None values
+            filters = {k: v for k, v in response.items() if v is not None}
+            
+            # Flatten date_range if present
+            if filters.get("date_range"):
+                dr = filters["date_range"]
+                # Pydantic model dump might return dict or object, ensure it's dict
+                if hasattr(dr, "model_dump"):
+                    filters["date_range"] = dr.model_dump()
+                
+                # Remove if empty
+                if not filters["date_range"].get("start") and not filters["date_range"].get("end"):
+                    del filters["date_range"]
 
-            has_date_keyword = any(k in q_lower for k in date_keywords)
-
-            # Also check for specific date formats (2024, 12.12, etc)
-            import re
-
-            has_date_format = re.search(r"\d{1,2}[./-]\d{1,2}", q_lower) or re.search(r"\d{4}", q_lower)
-
-            if response.get("date_range") and not (has_date_keyword or has_date_format):
-                logger.warning(f"Discarding hallucinated date range: {response['date_range']}")
-                response["date_range"] = None
-
-            return response
+            return filters
         except Exception as e:
             logger.error(f"Filter extraction failed: {e}")
             return {}

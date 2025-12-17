@@ -28,7 +28,7 @@ help:
 	@echo ""
 	@echo "🤖 AI Commands:"
 	@echo "  make ask [QUERY=...] - Ask for recommendations (interactive or direct)"
-	@echo "  make ai-enrich       - Generate AI summaries"
+	@echo "  make ai-enrich       - Generate AI summaries and enrich venues"
 	@echo "  make ai-embeddings   - Regenerate embeddings only (fast)"
 	@echo "  make ai-collections  - Run AI tournaments"
 	@echo "  make ai-view         - Audit AI quality"
@@ -241,10 +241,22 @@ FORCE ?=
 ai-enrich:
 	@echo "🤖 Generating AI summaries (Limit: $(LIMIT))..."
 	@export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py --limit $(LIMIT) $(FORCE)
+	@make venue-enrich
+
+venue-enrich:
+	@echo "🏟️  Enriching venues..."
+	@export PYTHONPATH=. && venv/bin/python src/scripts/enrich_venues.py
+
+enrich-entities:
+	@echo "🕸️  Enriching entities (Knowledge Graph)..."
+	@export PYTHONPATH=. && venv/bin/python src/scripts/enrich_entities.py --limit $(LIMIT)
+
+entity-enrich: enrich-entities
 
 ai-enrich-all:
 	@echo "🤖 Regenerating AI summaries for ALL events..."
 	@export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py --all $(FORCE)
+	@make venue-enrich
 
 ai-embeddings:
 	@echo "🧠 Regenerating embeddings only..."

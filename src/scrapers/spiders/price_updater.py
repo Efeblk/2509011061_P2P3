@@ -5,7 +5,7 @@ Reads URLs from FalkorDB and visits them to update prices.
 
 import scrapy
 from loguru import logger
-from src.scrapers.spiders.biletinial_spider import BiletinialSpider
+from .biletinial_spider import BiletinialSpider
 from src.database.connection import db_connection
 
 

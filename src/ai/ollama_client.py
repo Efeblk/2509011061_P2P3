@@ -2,7 +2,7 @@
 
 import json
 import requests
-from typing import Optional
+from typing import Optional, Any
 from loguru import logger
 
 from config.settings import settings
@@ -73,7 +73,13 @@ class OllamaClient:
         """
         return await self._generate_request(prompt, temperature=temperature, format=None, model=model)
 
-    async def generate_json(self, prompt: str, temperature: float = 0.3, model: Optional[str] = None) -> Optional[dict]:
+    async def generate_json(
+        self,
+        prompt: str,
+        temperature: float = 0.3,
+        model: Optional[str] = None,
+        schema: Optional[Any] = None,
+    ) -> Optional[dict]:
         """
         Generate JSON response.
 
@@ -81,6 +87,7 @@ class OllamaClient:
             prompt: Input prompt
             temperature: Creativity
             model: Optional model override
+            schema: Optional Pydantic model to validate response
 
         Returns:
             Parsed JSON dict or None if failed
@@ -90,13 +97,29 @@ class OllamaClient:
         if "json" not in prompt.lower():
             json_prompt += "\nRespond strictly with VALID JSON."
 
+        # If schema provided, append instruction
+        if schema:
+            json_prompt += f"\n\nReturn JSON matching this schema:\n{schema.model_json_schema()}"
+
         result = await self._generate_request(json_prompt, temperature=temperature, format="json", model=model)
 
         if not result:
             return None
 
         try:
-            return json.loads(result)
+            data = json.loads(result)
+
+            # Validate with schema if provided
+            if schema:
+                try:
+                    validated = schema.model_validate(data)
+                    return validated.model_dump()
+                except Exception as e:
+                    logger.error(f"Schema validation failed: {e}")
+                    return None
+            
+            return data
+
         except json.JSONDecodeError:
             logger.error(f"Failed to parse JSON from Ollama: {result[:100]}...")
             return None

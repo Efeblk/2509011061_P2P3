@@ -5,6 +5,11 @@ Biletinial spider for scraping events from biletinial.com
 import asyncio
 import uuid
 import scrapy
+# print("MODULE LOAD: BILETINIAL SPIDER V2 LOADED!!!!!!!!!!!!!")
+# import asynciorapy
+import re
+import asyncio
+from datetime import datetime
 from src.scrapers.spiders.base import BaseEventSpider
 from src.scrapers.items import EventItem
 from src.utils.date_parser import parse_turkish_date_range, extract_date_from_title
@@ -20,21 +25,31 @@ class BiletinialSpider(BaseEventSpider):
     name = "biletinial"
     allowed_domains = ["biletinial.com"]
 
-    # Istanbul events - multiple categories
-    start_urls = [
-        # "https://biletinial.com/tr-tr/sehrineozel/istanbul",  # City-specific page SKIP THIS FOR NOW
-        "https://biletinial.com/tr-tr/muzik/istanbul",  # Music events in Istanbul
-        "https://biletinial.com/tr-tr/tiyatro/istanbul",  # Theater events in Istanbul
-        "https://biletinial.com/tr-tr/sinema/istanbul",  # Cinema events in Istanbul
-        "https://biletinial.com/tr-tr/opera-bale/istanbul",  # Opera & Ballet events in Istanbul
-        "https://biletinial.com/tr-tr/gosteri/istanbul",  # Show/Performance events in Istanbul
-        "https://biletinial.com/tr-tr/egitim/istanbul",  # Education/Workshop events in Istanbul
-        "https://biletinial.com/tr-tr/seminer/istanbul",  # Seminar/Conference events in Istanbul
-        "https://biletinial.com/tr-tr/etkinlik/istanbul",  # General events in Istanbul
-        "https://biletinial.com/tr-tr/eglence/istanbul",  # Entertainment events in Istanbul
-        "https://biletinial.com/tr-tr/etkinlikleri/stand-up",  # Stand-up comedy events
-        "https://biletinial.com/tr-tr/etkinlikleri/senfoni-etkinlikleri",  # Symphony events
-    ]
+    def __init__(self, limit=None, *args, **kwargs):
+        super(BiletinialSpider, self).__init__(*args, **kwargs)
+        self.playwright_page = None
+        self.limit = int(limit) if limit else None
+
+        # All categories from docs/scraped_websites.md
+        self.start_urls = [
+            "https://biletinial.com/tr-tr/muzik/istanbul",
+            "https://biletinial.com/tr-tr/tiyatro/istanbul",
+            "https://biletinial.com/tr-tr/sinema/istanbul",
+            "https://biletinial.com/tr-tr/opera-bale/istanbul",
+            "https://biletinial.com/tr-tr/gosteri/istanbul",
+            "https://biletinial.com/tr-tr/egitim/istanbul",
+            "https://biletinial.com/tr-tr/seminer/istanbul",
+            "https://biletinial.com/tr-tr/etkinlik/istanbul",
+            "https://biletinial.com/tr-tr/eglence/istanbul",
+            "https://biletinial.com/tr-tr/etkinlikleri/stand-up",  # Note: Istanbul filter applied dynamically if possible, or global
+            "https://biletinial.com/tr-tr/etkinlikleri/senfoni-etkinlikleri",
+            "https://biletinial.com/tr-tr/spor/istanbul",
+        ]
+
+        # Allow overriding start_urls for testing specific pages
+        if kwargs.get('start_url'):
+            self.start_urls = [kwargs.get('start_url')]
+            self.logger.info(f"🐞 DEBUG MODE: Overriding start_urls to {self.start_urls}")
 
     custom_settings = {
         **BaseEventSpider.custom_settings,
@@ -78,6 +93,15 @@ class BiletinialSpider(BaseEventSpider):
         page = response.meta["playwright_page"]
 
         try:
+            # DEBUG: Check if we are on a detail page (via start_url override)
+            # If we see a detail page container, process it directly
+            detail_container = await page.query_selector(".movie-detail-content, .yds_cinema_movie_thread_info, .event-detail-content")
+            if detail_container:
+                self.logger.info("🐞 DEBUG MODE: Direct detail page detected, parsing single event...")
+                async for item in self.parse_event_detail(response):
+                    yield item
+                return
+
             # Check if we need to select a city (for category pages like concerts)
             # Look for city selector dropdown
             try:
@@ -148,7 +172,7 @@ class BiletinialSpider(BaseEventSpider):
             await asyncio.sleep(2)
 
             # Click "Daha Fazla Yükle" (Load More) button multiple times
-            max_clicks = 20  # Safety limit
+            max_clicks = 500  # Increased from 20 to cover all events
             clicks = 0
 
             self.logger.info("🔄 Looking for 'Daha Fazla Yükle' button...")
@@ -157,6 +181,11 @@ class BiletinialSpider(BaseEventSpider):
                 try:
                     # Count events before clicking (use the detected selector)
                     events_before = await page.locator(event_list_selector).count()
+
+                    # Optimization: Stop catching if we already have enough events
+                    if self.limit and events_before >= self.limit:
+                        self.logger.info(f"✓ Limit reached ({self.limit} events), stopping 'Load More' clicks.")
+                        break
 
                     # Look for the load more button
                     # Common selectors for "Load More" buttons on Turkish sites
@@ -179,6 +208,7 @@ class BiletinialSpider(BaseEventSpider):
                     # Wait for new content to load
                     await asyncio.sleep(3)
 
+
                     # Count events after clicking
                     events_after = await page.locator(event_list_selector).count()
                     new_events = events_after - events_before
@@ -197,16 +227,8 @@ class BiletinialSpider(BaseEventSpider):
             if clicks > 0:
                 self.logger.info(f"✅ Clicked 'Daha Fazla Yükle' button {clicks} times")
 
-            # Extract page content
-            content = await page.content()
-
-            # Save to file for debugging
-            with open("biletinial_page_content.html", "w", encoding="utf-8") as f:
-                f.write(content)
-
-            self.logger.info(f"Page content: {len(content)} chars")
-
             # Replace response body
+            content = await page.content()
             response = response.replace(body=content.encode("utf-8"))
 
             # Find all event items in the list (use the detected selector)
@@ -220,6 +242,11 @@ class BiletinialSpider(BaseEventSpider):
 
             # Parse each event
             for idx, event in enumerate(events, 1):
+                # Enforce limit on processing
+                if self.limit and events_yielded >= self.limit:
+                    self.logger.info(f"🛑 Limit reached: {self.limit} events processed. Stopping.")
+                    break
+
                 try:
                     # Extract data
                     title = self.extract_title(event)
@@ -245,37 +272,40 @@ class BiletinialSpider(BaseEventSpider):
                         has_reviews = rating_count and rating_count > 0
 
                         if url:
-                            reason = ["fetching price"]
-                            if needs_date:
-                                reason.append("missing date")
-                            if has_reviews:
-                                reason.append(f"has {rating_count} reviews")
-                            self.logger.debug(f"Will visit detail page for '{title}': {', '.join(reason)}")
+                            self.logger.debug(f"Will visit detail page for '{title}' (Knowledge Graph extraction)")
 
-                            # Yield a request to parse the detail page
-                            yield scrapy.Request(
-                                url=url,
-                                callback=self.parse_event_detail,
-                                meta={
-                                    "playwright": True,
-                                    "playwright_include_page": True,
-                                    "playwright_page_init_callback": self.init_page,
-                                    "playwright_page_goto_kwargs": {
-                                        "wait_until": "domcontentloaded",
-                                        "timeout": 60000,
-                                    },
-                                    "title": title,
-                                    "venue": venue,
-                                    "city": city,
-                                    "url": url,
-                                    "image_url": image_url,
-                                    "event_type": event_type,
-                                    "date_string": date_string,  # Pass date if we have it
-                                    "rating": rating,
-                                    "rating_count": rating_count,
+                            # knowledge-graph: We ALWAYS visit the detail page now to get:
+                            # 1. Full Description
+                            # 2. Structured Entities (Writer, Director, Cast)
+                            # 3. User Reviews
+            
+                            # Pass all known data (date, price, etc.) to the detail parser
+                            meta = {
+                                "title": title,
+                                "venue": venue,
+                                "city": city,
+                                "date_string": date_string,  # might be None
+                                "price": None,   # Price not visible on listing page
+                                "url": url,
+                                "image_url": image_url,
+                                "event_type": event_type,
+                                "rating": rating,
+                                "rating_count": rating_count,
+                                "playwright": True,
+                                "playwright_include_page": True,
+                                "playwright_page_init_callback": self.init_page,
+                                "playwright_page_goto_kwargs": {
+                                    "wait_until": "domcontentloaded",
+                                    "timeout": 60000,
                                 },
-                                dont_filter=True,
-                                errback=self.errback_close_page,
+                            }
+                            
+                            yield scrapy.Request(
+                                url, 
+                                callback=self.parse_event_detail, 
+                                meta=meta,
+                                dont_filter=True, # Allow re-visiting if needed
+                                errback=self.errback_close_page
                             )
                             events_yielded += 1
                         else:
@@ -287,9 +317,9 @@ class BiletinialSpider(BaseEventSpider):
                                 event_item = EventItem(
                                     title=self.clean_text(title),
                                     venue=self.clean_text(venue) if venue else None,
-                                    city=self.clean_text(city) if city else "İstanbul",  # Default to Istanbul
+                                    city=self.clean_text(city) if city else "İstanbul",
                                     date=individual_date,
-                                    price=None,  # Price not visible on listing page
+                                    price=None,
                                     url=url,
                                     image_url=image_url,
                                     category=event_type if event_type else "Etkinlik",
@@ -387,6 +417,7 @@ class BiletinialSpider(BaseEventSpider):
 
             self.logger.info(f"DEBUG: is_sold_out={is_sold_out}")
 
+            self.logger.info("DEBUG: Starting Price Extraction")
             # Try 1: data-ticketprices JSON attribute (Most Reliable)
             # Even if marked sold out, check JSON because it might be a false positive or partial availability
             try:
@@ -567,6 +598,8 @@ class BiletinialSpider(BaseEventSpider):
             rating = response.meta.get("rating")
             rating_count = response.meta.get("rating_count")
 
+
+            self.logger.info("DEBUG: Starting Date Extraction")
             # Only extract date if not already provided from listing
             if not event_date or not event_date.strip():
                 # Method 1: Look for "Vizyon Tarihi" text (for cinema events)
@@ -648,22 +681,27 @@ class BiletinialSpider(BaseEventSpider):
                                     break
 
             # Extract reviews from detail page
+            self.logger.info("DEBUG: Starting Review Extraction")
             reviews = await self.extract_reviews(page)
+            self.logger.info("DEBUG: Review Extraction Finished")
+
             if reviews:
                 self.logger.info(f"✓ Found {len(reviews)} reviews for '{response.meta.get('title')}'")
-            else:
-                # Save page HTML for debugging if no reviews found (only once)
-                import os
 
-                debug_file = "biletinial_detail_page.html"
-                if not os.path.exists(debug_file):
-                    content = await page.content()
-                    with open(debug_file, "w", encoding="utf-8") as f:
-                        f.write(content)
-                    self.logger.info(f"Saved detail page HTML to {debug_file} for review structure analysis")
+            else:
+                self.logger.info("DEBUG: No reviews found.")
 
             # Get metadata from the request
             title = response.meta.get("title")
+            if not title:
+                 try:
+                     title = self.extract_title(await page.query_selector("body"))
+                     if title:
+                         title = self.clean_text(title)
+                 except:
+                     pass
+            if not title:
+                 title = "Unknown Title"
             venue = response.meta.get("venue")
             city = response.meta.get("city", "İstanbul")
             url = response.meta.get("url")
@@ -676,6 +714,12 @@ class BiletinialSpider(BaseEventSpider):
                 # Parse date range into individual dates (in case there's a range)
                 individual_dates = parse_turkish_date_range(event_date)
 
+                # EXTRACT SHARED DATA ONCE
+                self.logger.info("DEBUG: Starting Entity Extraction (Date Found path)")
+                # Extract description and entities here so they are ready for all date variants
+                description = await self.extract_description(page)
+                entities = await self.extract_entities(page)
+
                 # Yield event for each date
                 for individual_date in individual_dates:
                     event_item = EventItem(
@@ -683,7 +727,10 @@ class BiletinialSpider(BaseEventSpider):
                         venue=self.clean_text(venue) if venue else None,
                         city=self.clean_text(city) if city else "İstanbul",
                         date=individual_date,
+
                         price=final_price,
+                        description=description,  # Use pre-extracted description
+                        extracted_entities=entities,  # Use pre-extracted entities
                         price_range=response.meta.get("price_range"),  # Pass price_range if available
                         category_prices=response.meta.get("category_prices"),  # Pass extracted category prices
                         url=response.url,
@@ -708,6 +755,12 @@ class BiletinialSpider(BaseEventSpider):
                     city=self.clean_text(city) if city else "İstanbul",
                     date=None,
                     price=final_price,  # UPDATED
+                    description=await self.extract_description(page),  # Extract description
+                    # DEBUG LOG
+                    # self.logger.info("DEBUG: Starting Entity Extraction (Fallback path)") 
+                    # Can't easily insert statement inside dict construction.
+                    # I'll just rely on extract_entities internal logging.
+                    extracted_entities=await self.extract_entities(page),  # Extract structured entities
                     url=url,
                     image_url=image_url,
                     category=event_type,
@@ -903,11 +956,12 @@ class BiletinialSpider(BaseEventSpider):
             try:
                 comments_tab = await page.query_selector('a.goComments[title="Yorumlar"]')
                 if comments_tab:
-                    await comments_tab.click()
+                    # Add timeout to prevent hanging if tab is not interactable
+                    await comments_tab.click(timeout=5000)
                     await asyncio.sleep(2)  # Wait for reviews to load
                     self.logger.debug("Clicked on Comments tab")
             except Exception as e:
-                self.logger.debug(f"Could not click Comments tab: {e}")
+                self.logger.debug(f"Could not click Comments tab (timeout or error): {e}")
 
             # Click "Daha Fazla Yorum" (Load More Comments) button repeatedly to load all reviews
             max_clicks = 10  # Prevent infinite loop
@@ -1032,9 +1086,286 @@ class BiletinialSpider(BaseEventSpider):
             return None
         return " ".join(text.split()).strip()
 
+    async def extract_description(self, page):
+        """Extract event description from detail page."""
+        try:
+            # Selector identified from user screenshot
+            # The description is contained in .yds_cinema_movie_thread_info
+            # We extract the full text of the container to ensure we capture all metadata
+            # (Yazar, Yönetmen, Oyuncular, etc.) which might be in p tags or other elements.
+            
+            element = await page.query_selector(".yds_cinema_movie_thread_info")
+            
+            if element:
+                text = await element.inner_text()
+                if text and len(text.strip()) > 20:
+                    return text.strip()
+
+            # Fallback to other potential selectors if the main one fails
+            fallback_selectors = [
+                ".movie-detail-content",
+                ".etkinlik-detay-aciklama",
+                "#event-content",
+                "div[itemprop='description']",
+                ".event-description",
+                ".aciklama-detay"
+            ]
+            for selector in fallback_selectors:
+                el = await page.query_selector(selector)
+                if el:
+                    text = await el.inner_text()
+                    if text and len(text.strip()) > 20:
+                        return text.strip()
+            
+            return None
+            
+        except Exception as e:
+            self.logger.warning(f"Error extracting description: {e}")
+            return None
+
     async def errback_close_page(self, failure):
         """Handle errors by closing the page."""
         page = failure.request.meta.get("playwright_page")
         if page:
             await page.close()
         self.logger.error(f"Request failed: {failure.value}")
+
+    async def extract_entities(self, page):
+        """
+        Extracts entities (actors, directors, etc.) from the page.
+        Supports two layouts:
+        1. Cinema/Standard: Text-based <p><strong>Role:</strong> Name</p>
+        2. Theater/Concert: Card grid with implicit roles
+        """
+        # print(f"CRITICAL PRINT: EXTRACT_ENTITIES STARTING on {page.url}")
+        # self.logger.error(f"!!!!! CRITICAL ERROR LOG !!!!! EXTRACT_ENTITIES_V2 STARTING on {page.url}")
+        try:
+            # 0. Check for "Kadro" tab and click if needed (for tabbed layouts like Concerts)
+            try:
+                 kadro_tab = page.locator(".goActors")
+                 if await kadro_tab.is_visible():
+                      self.logger.info(f"🖱️  Clicking 'Kadro' tab on {page.url} to reveal entities...")
+                      await kadro_tab.click()
+                      await asyncio.sleep(1) # Wait for UI update
+            except Exception:
+                 pass
+
+            # 1. Wait for ANY known container to be present
+            try:
+                # Layout 1: .yds_cinema_movie_thread_info
+                # Layout 2: .yds_cinema_movie_thread_person_details_flex (Theater cast)
+                # Use state='attached' to detect even if hidden/not fully visible yet
+                await page.wait_for_selector('.yds_cinema_movie_thread_info, .yds_cinema_movie_thread_person_details_flex', timeout=5000, state='attached')
+            except Exception:
+                # Don't return empty yet! Let the JS logic try its best.
+                self.logger.warning(f"⚠️ Primary entity container not found on {page.url}. Proceeding to JS fallback...")
+
+
+            # 2. Execute extraction logic
+            js_result = await page.evaluate("""() => {
+                try {
+                    const entities = [];
+                    let debugText = "";
+                    let foundLayout = "none";
+                    
+                    // --- LAYOUT 1: Cinema / Standard (Detailed Role Text) ---
+                    const infoContainers = document.querySelectorAll('.yds_cinema_movie_thread_info, .yds_cinema_movie_thread_body');
+                    if (infoContainers.length > 0) {
+                        foundLayout = "cinema_text";
+                        // ... existing logic for Layout 1 ...
+                        let container = infoContainers[0];
+                        
+                        // Heuristic selection (same as before)
+                        if (infoContainers.length > 1) {
+                            let bestContainer = container;
+                            let maxScore = -1;
+                            infoContainers.forEach(c => {
+                                let score = 0;
+                                const text = c.textContent || "";
+                                if (text.includes("Yazar") || text.includes("YAZAR")) score += 10;
+                                if (text.includes("Yönetmen") || text.includes("YÖNETMEN")) score += 10;
+                                if (text.includes("Oyuncu") || text.includes("OYUNCU")) score += 10;
+                                if (text.length > 100) score += 1; 
+                                if (score > maxScore) { maxScore = score; bestContainer = c; }
+                            });
+                            container = bestContainer;
+                        }
+                        
+                        debugText = container.innerText;
+                        
+                        const roleMap = {
+                            'YAZAR': 'WROTE', 'YAZAN': 'WROTE',
+                            'YÖNETMEN': 'DIRECTED', 'YÖNETEN': 'DIRECTED', 'SAHNEYE KOYAN': 'DIRECTED',
+                            'OYUNCULAR': 'ACTED_IN', 'OYUNCU': 'ACTED_IN', 'OYNAYANLAR': 'ACTED_IN',
+                            'MÜZİK': 'COMPOSED', 'BESTECİ': 'COMPOSED',
+                            'ORKESTRA ŞEFİ': 'CONDUCTED', 'ŞEF': 'CONDUCTED',
+                            'SOLİST': 'PERFORMED_BY',
+                            'ÇEVİRMEN': 'TRANSLATED', 'ÇEVİREN': 'TRANSLATED',
+                            'UYARLAYAN': 'ADAPTED',
+                            'KOREOGRAFİ': 'CHOREOGRAPHED'
+                        };
+                        
+                        const paragraphs = container.querySelectorAll('p');
+                        // DEBUG: Log first few paragraphs
+                        paragraphs.forEach((p, idx) => {
+                             if (idx < 5) debugText += " | P" + idx + ": " + p.textContent;
+                        });
+
+                        paragraphs.forEach(p => {
+                            const strong = p.querySelector('strong');
+                            if (strong) {
+                                let rawKey = strong.textContent.trim();
+                                let key = rawKey.replace(':', '').toLocaleUpperCase('tr-TR');
+                                let role = null;
+                                let isKeyInStrong = true;
+                                
+                                // 1. Check if role is in the strong tag (Standard Layout)
+                                for (const [k, r] of Object.entries(roleMap)) {
+                                    if (key.includes(k)) { role = r; break; }
+                                }
+                                
+                                // 2. Fallback: Check entire paragraph text (Symphony Layout: "Şef: <strong>Name</strong>")
+                                if (!role) {
+                                    let fullText = p.textContent.replace(/\u00A0/g, ' ').trim();
+                                    let fullKey = fullText.toLocaleUpperCase('tr-TR');
+                                    for (const [k, r] of Object.entries(roleMap)) {
+                                         // Check if keyword exists in text AND appears *before* the name (roughly)
+                                        if (fullKey.includes(k)) { 
+                                            role = r; 
+                                            isKeyInStrong = false;
+                                            break; 
+                                        }
+                                    }
+                                }
+                                
+                                if (role) {
+                                    let rawValue = "";
+                                    if (isKeyInStrong) {
+                                         // Standard: Role is strong, Value is next sibling(s)
+                                        let nextNode = strong.nextSibling;
+                                        while (nextNode) {
+                                            if (nextNode.nodeType === 3) rawValue += nextNode.textContent;
+                                            nextNode = nextNode.nextSibling;
+                                        }
+                                    } else {
+                                         // Symphony: Role is prev text, Value is current strong text
+                                         rawValue = strong.textContent.trim();
+                                    }
+
+                                    let value = rawValue.trim().replace(/^[\\s"']+|[\\s"']+$/g, '');
+                                    if (value.length > 2) {
+                                        const names = value.split(',').map(n => n.trim()).filter(n => n.length > 0);
+                                        names.forEach(name => {
+                                            entities.push({ 'name': name, 'role': role, 'raw': rawValue });
+                                        });
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    
+                    // --- LAYOUT 2: Theater / Card Grid (Implicit Roles) ---
+                    // "Kadro" (Cast) -> ACTED_IN
+                    const castContainer = document.querySelector('.yds_cinema_movie_thread_person_details_flex');
+                    if (castContainer) {
+                        foundLayout = foundLayout === "none" ? "theater_cards" : foundLayout + "+theater_cards";
+                        const actors = castContainer.querySelectorAll('.yds_cinema_movie_thread_person_details');
+                        actors.forEach(a => {
+                            const nameEl = a.querySelector('.yds_person_details p');
+                            const name = nameEl ? nameEl.textContent.trim() : "";
+                            if (name) {
+                                entities.push({ 'name': name, 'role': 'ACTED_IN', 'raw': 'From Cast Grid' });
+                            }
+                        });
+                    }
+                    
+                    // "Sahne Arkası" (Crew) -> CREW / UNKNOWN
+                    const crewContainer = document.querySelector('.artist_section_list');
+                    if (crewContainer) {
+                        foundLayout = foundLayout === "none" ? "crew_list" : foundLayout + "+crew_list";
+                        const crewMembers = crewContainer.querySelectorAll('.artist_section_list-artist');
+                        crewMembers.forEach(div => {
+                            const link = div.querySelector('div > a');
+                            const span = div.querySelector('div > span');
+                            const name = link ? link.textContent.trim() : "";
+                            if (name) {
+                                let role = 'CREW';
+                                if (span) {
+                                    const spanText = span.textContent.trim();
+                                    // Map known Turkish roles if they appear in span
+                                    // Otherwise default to CREW
+                                    if (spanText !== "-" && spanText.length > 2) {
+                                        // Simple mapping
+                                        const lowerSpan = spanText.toLocaleLowerCase('tr-TR');
+                                        if (lowerSpan.includes("yazar")) role = 'WROTE';
+                                        else if (lowerSpan.includes("yönetmen")) role = 'DIRECTED';
+                                        else if (lowerSpan.includes("senaryo")) role = 'WROTE';
+                                        else if (lowerSpan.includes("müzik")) role = 'COMPOSED';
+                                        else role = 'CREW'; // Keep generic if unknown
+                                    }
+                                }
+                                entities.push({ 'name': name, 'role': role, 'raw': 'From Crew List' });
+                            }
+                        });
+                    }
+
+                    if (entities.length > 0) {
+                         return { found: true, result: entities, debug: debugText, layout: foundLayout };
+                    }
+
+                // Return both result and debug text
+                return { result: entities, debug: debugText, layout: foundLayout };
+            } catch(e) { 
+                return { result: [], debug: "JS ERROR: " + e.toString(), layout: "error" }; 
+            }
+        }
+        """)
+
+            # Handle new return format (dict instead of list)
+            entities = []
+            if isinstance(js_result, dict):
+                entities = js_result.get("result", [])
+                debug_info = js_result.get("debug", "")
+                found_layout = js_result.get("layout", "unknown")
+                
+                # Log specific debug info for problematic layouts
+                if "Şef" in debug_info or "Solist" in debug_info:
+                     self.logger.info(f"🔍 JS DEBUG INFO: {debug_info[:500]}...") # Log first 500 chars
+
+                if entities:
+                    self.logger.info(f"⚡ Fast-Path ({found_layout}): Extracted {len(entities)} entities. Sample: {entities[:2]}")
+                else:
+                    self.logger.warning(f"DEBUG_ENTITY_FAIL: Layout {found_layout} found but 0 entities.")
+                    self.logger.info(f"🔍 JS DEBUG INFO (FAIL): {debug_info[:1000]}...") # Log first 1000 chars on fail
+
+                self.logger.info(f"⚡ Fast-Path: Extracted {len(entities)} entities.")
+
+            # 3. Fallback: Python Regex (for Stand-up / simple text layouts)
+            if not entities and debug_info:
+                # self.logger.info("DEBUG: Attempting Python Fallback (Regex)...")
+                try:
+                    import re # Ensure re is available (locally or globally)
+                    
+                    # Pattern 1: "[Name] Tek Kişilik Stand Up" / "[Name] Stand Up"
+                    # Matches "Furkan Bozdağ Tek Kişilik Stand Up"
+                    standup_match = re.search(r"([A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]+)+)\s+(?:Tek\s+Kişilik\s+Stand\s+Up|Stand\s+Up)", debug_info)
+                    if standup_match:
+                         name = standup_match.group(1).strip()
+                         entities.append({'name': name, 'role': 'PERFORMED_BY', 'raw': 'Regex: Stand Up'})
+                         self.logger.info(f"✨ Fallback Extracted (Stand-up): {name}")
+
+                    # Pattern 2: "Sahne Alan: [Name]"
+                    sahne_match = re.search(r"Sahne\s+Alan\s*:\s*([A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]+)+)", debug_info)
+                    if sahne_match:
+                         name = sahne_match.group(1).strip()
+                         entities.append({'name': name, 'role': 'PERFORMED_BY', 'raw': 'Regex: Sahne Alan'})
+                         self.logger.info(f"✨ Fallback Extracted (Sahne Alan): {name}")
+
+                except Exception as ex:
+                    self.logger.warning(f"Fallback regex error: {ex}")
+
+            return entities
+            
+        except Exception as e:
+            self.logger.warning(f"Error extracting entities logic: {e}")
+            return []

@@ -27,3 +27,4 @@ class EventItem(scrapy.Item):
     reviews = scrapy.Field()  # List of review dicts from detail page
     uuid = scrapy.Field()  # For updating existing events
     is_update_job = scrapy.Field()  # Flag for partial updates
+    extracted_entities = scrapy.Field()  # List of dicts: [{'name': '...', 'role': '...'}]

@@ -2,7 +2,7 @@
 
 import json
 import time
-from typing import Optional
+from typing import Optional, Any
 import hashlib
 
 import google.generativeai as genai
@@ -136,7 +136,13 @@ class GeminiClient:
 
         return None
 
-    async def generate_json(self, prompt: str, temperature: float = 0.3, use_cache: bool = True) -> Optional[dict]:
+    async def generate_json(
+        self,
+        prompt: str,
+        temperature: float = 0.3,
+        use_cache: bool = True,
+        schema: Optional[Any] = None,
+    ) -> Optional[dict]:
         """
         Generate JSON response.
 
@@ -144,10 +150,15 @@ class GeminiClient:
             prompt: Input prompt (should ask for JSON)
             temperature: Creativity (lower for JSON)
             use_cache: Whether to use cache
+            schema: Optional Pydantic model to validate response
 
         Returns:
             Parsed JSON dict or None if failed
         """
+        # If schema provided, append instruction
+        if schema:
+            prompt += f"\n\nReturn JSON matching this schema:\n{schema.model_json_schema()}"
+
         result = await self.generate(prompt, temperature=temperature, use_cache=use_cache)
 
         if not result:
@@ -163,8 +174,19 @@ class GeminiClient:
                 clean_result = clean_result[3:]
             if clean_result.endswith("```"):
                 clean_result = clean_result[:-3]
+            
+            data = json.loads(clean_result.strip())
 
-            return json.loads(clean_result.strip())
+            # Validate with schema if provided
+            if schema:
+                try:
+                    validated = schema.model_validate(data)
+                    return validated.model_dump()
+                except Exception as e:
+                    logger.error(f"Schema validation failed: {e}")
+                    return None
+
+            return data
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {e}")

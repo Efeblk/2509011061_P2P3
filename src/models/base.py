@@ -142,10 +142,28 @@ class Node(ABC):
             return None
 
     @classmethod
-    def find_all(cls: Type["Node"], limit: Optional[int] = None) -> List["Node"]:
+    async def get_all_events(cls, limit: int = 100) -> List["EventNode"]:
         """
-        Find all nodes of this type.
+        Get all events (async wrapper around find_all).
         """
+        from src.database.connection import db_connection
+        import asyncio
+        
+        # We can implement this as an async wrapper essentially
+        # But for now, let's just make a direct cypher query that is efficient
+        try:
+            query = f"MATCH (n:Event) RETURN n LIMIT {limit}"
+            result = await asyncio.to_thread(db_connection.execute_query, query)
+            
+            nodes = []
+            if result.result_set:
+                for row in result.result_set:
+                    node_data = row[0].properties
+                    nodes.append(cls.from_dict(node_data))
+            return nodes
+        except Exception as e:
+            logger.error(f"Failed to get events: {e}")
+            return []
         try:
             # Get label
             temp_instance = object.__new__(cls)
