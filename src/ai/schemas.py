@@ -26,6 +26,8 @@ class SearchFilters(BaseModel):
     max_price: Optional[float] = Field(None, description="Maximum price in TL.")
     city: Optional[str] = Field(None, description="City name (e.g., Istanbul, Ankara).")
     category: Optional[str] = Field(None, description="Event category (e.g., Jazz, Theater).")
+    genre: Optional[str] = Field(None, description="Event genre (e.g., Comedy, Opera, Rock).")
+    duration: Optional[str] = Field(None, description="Event duration (e.g. 120 minutes).")
     date_range: Optional[DateRange] = Field(None, description="Date range for the event.")
     
     class Config:

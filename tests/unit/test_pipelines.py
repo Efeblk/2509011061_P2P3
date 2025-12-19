@@ -3,7 +3,7 @@ Unit tests for Scrapy pipelines.
 """
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 from src.scrapers.pipelines import (
     ValidationPipeline,
     DuplicatesPipeline,
@@ -292,3 +292,47 @@ class TestFalkorDBPipeline:
             await self.pipeline.process_item(item, self.spider)
 
         assert self.pipeline.events_failed == 1
+
+    @patch("src.scrapers.pipelines.db_connection")
+    async def test_full_update_saves_metadata(self, mock_db):
+        """Test that full update saves genre and duration."""
+        mock_db.execute_query.return_value = True
+        
+        item = {
+            "uuid": "test-uuid-meta",
+            "title": "Test Metadata Event",
+            "date": "2025-01-01",
+            "venue": "Test Venue",
+            "city": "Test City",
+            "price": 100.0,
+            "url": "http://test.com",
+            "source": "biletinial",
+            "category": "Theater",
+            "genre": "Comedy",
+            "duration": "120 min",
+            "is_update_job": False 
+        }
+
+        # We need to mock asyncio.to_thread since the pipeline uses it
+        with patch("asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+            mock_to_thread.return_value = True
+            
+            await self.pipeline.process_item(item, self.spider)
+            
+            # Verify to_thread was called with execute_query
+            # The pipeline calls to_thread for execute_query
+            assert mock_to_thread.call_count >= 1
+            
+            # Inspect call args to ensure genre/duration are present
+            # Argument 0 is the function (db_connection.execute_query)
+            # Argument 1 is the query string
+            # Argument 2 is the params dict
+            
+            call_args = mock_to_thread.call_args[0]
+            query = call_args[1]
+            params = call_args[2]
+
+            assert "genre: $genre" in query
+            assert "duration: $duration" in query
+            assert params["genre"] == "Comedy"
+            assert params["duration"] == "120 min"

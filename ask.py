@@ -47,6 +47,15 @@ def display_event_card(event: dict, score: float = None, reason: str = None):
     venue = event.get("venue") or "Unknown Venue"
     city = event.get("city") or "Unknown City"
     date = event.get("date") or "Unknown Date"
+    
+    # Handle grouped dates
+    if "dates" in event and event["dates"]:
+        dates = sorted(event["dates"])
+        if len(dates) > 1:
+            date = f"{dates[0]} - {dates[-1]} ({len(dates)} shows)"
+        elif len(dates) == 1:
+            date = dates[0]
+
     price = event.get("price")
 
     # Format Price
@@ -57,11 +66,19 @@ def display_event_card(event: dict, score: float = None, reason: str = None):
     else:
         price_str = "[dim]Price N/A[/dim]"
 
+    genre = event.get("genre") or "N/A"
+    duration = event.get("duration")
+
     # Meta info line
     meta = f"📍 {city}  🏠 {venue}  🗓️  {date}  💰 {price_str}"
+    
+    # Sub-meta line
+    sub_meta = f"🎭 {genre}"
+    if duration:
+        sub_meta += f"  ⏱️ {duration}"
 
     # Content
-    content = [meta]
+    content = [meta, sub_meta]
 
     if reason:
         content.append(f"\n[italic cyan]🏆 {reason}[/italic cyan]")
@@ -145,11 +162,10 @@ async def main():
 
                     if results:
                         console.print("\n[bold white]📚 Source Events:[/bold white]")
-                        # Fetch details for display
-                        for score, summary in results[:5]:
-                            details = await assistant._fetch_event_details(summary.event_uuid)
-                            if details:
-                                display_event_card(details, score=score)
+                        for score, summary, details in results[:5]:
+                             # Inject AI summary text (using sentiment_summary for brevity)
+                             details["summary"] = summary.sentiment_summary
+                             display_event_card(details, score=score)
                     else:
                         console.print("[dim]No specific events found directly matching criteria.[/dim]")
 

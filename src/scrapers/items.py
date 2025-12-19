@@ -20,6 +20,8 @@ class EventItem(scrapy.Item):
     image_url = scrapy.Field()
     category = scrapy.Field()
     source = scrapy.Field()
+    genre = scrapy.Field()
+    duration = scrapy.Field()
 
     # EventContent fields
     rating = scrapy.Field()

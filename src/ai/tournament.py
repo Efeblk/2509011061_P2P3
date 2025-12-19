@@ -51,9 +51,14 @@ async def run_stage_1_filter(events: List[Dict], criteria: str, dry_run: bool = 
 
     # Use configured AI client (Local or Cloud)
     client = get_ai_client(use_reasoning=False)
+    
+    from datetime import datetime
+    today = datetime.now().strftime("%Y-%m-%d %A")
 
     prompt = f"""
     You are a strict event curator. 
+    Current Date: {today}
+    
     Filter the following list of events based on this criteria: "{criteria}".
     
     Rules:
@@ -105,9 +110,14 @@ async def run_stage_2_finals(candidates: List[Dict], category_name: str, criteri
 
     # Use Reasoning model (or Local equivalent)
     client = get_ai_client(use_reasoning=True)
+    
+    from datetime import datetime
+    today = datetime.now().strftime("%Y-%m-%d %A")
 
     prompt = f"""
     You are an expert lifestyle editor for a premium city guide.
+    Current Date: {today}
+    
     Task: Select the Top 10 events for the collection: "{category_name}".
     Criteria: {criteria}
     
@@ -165,7 +175,7 @@ async def run_tournament(
 
     query = f"""
     MATCH (e:Event)-[:HAS_AI_SUMMARY]->(s:AISummary)
-    RETURN e.uuid, e.title, e.date, s.sentiment_summary, s.importance, s.value_rating, s.quality_score
+    RETURN e.uuid, e.title, e.date, s.sentiment_summary, s.importance, s.value_rating, s.quality_score, e.genre, e.duration
     {limit_clause}
     """
     res = db_connection.graph.query(query).result_set
@@ -178,7 +188,16 @@ async def run_tournament(
             continue
 
         all_candidates.append(
-            {"uuid": row[0], "title": row[1], "date": row[2], "summary": row[3], "importance": row[4], "value": row[5]}
+            {
+                "uuid": row[0], 
+                "title": row[1], 
+                "date": row[2], 
+                "summary": row[3], 
+                "importance": row[4], 
+                "value": row[5],
+                "genre": row[7] or "",
+                "duration": row[8] or ""
+            }
         )
 
     logger.info(f"Found {len(all_candidates)} eligible candidates.")

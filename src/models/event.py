@@ -28,6 +28,8 @@ class EventNode(Node):
     category: Optional[str] = None  # e.g., "Concert", "Theater", "Stand-up"
     source: Optional[str] = None  # e.g., "biletix", "biletino"
     category_prices: Optional[str] = None  # JSON string of category prices
+    genre: Optional[str] = None  # e.g., "Kabare", "Dram"
+    duration: Optional[str] = None  # e.g., "120 dakika"
 
     # AI analysis fields (to be filled later)
     ai_score: Optional[float] = None
@@ -48,6 +50,8 @@ class EventNode(Node):
             "date": self.date or "",
             "venue": self.venue or "",
             "city": self.city or "",
+            "genre": self.genre or "",
+            "duration": self.duration or "",
             "price": self.price,
             "price_range": self.price_range or "",
             "url": self.url or "",

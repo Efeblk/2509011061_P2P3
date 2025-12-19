@@ -33,6 +33,8 @@ Analyze this event and create a compact, intelligent summary.
 EVENT DETAILS:
 Title: {title}
 Category: {category}
+Genre: {genre}
+Duration: {duration}
 Description: {description}
 Venue: {venue}
 City: {city}
@@ -66,6 +68,12 @@ Consider:
 - Who would most enjoy this?
 
 Be honest - if it's mediocre, say so. If reviews are mixed, reflect that.
+
+CRITICAL:
+- The event is happening in {city}.
+- If the description mentions other cities (e.g. past tour dates, "Ankara'dan sonra İstanbul'da"), IGNORE those cities.
+- Do NOT say "in Ankara" or "in Izmir" if the Event City is {city}.
+- Stick strictly to the venue and city provided in EVENT DETAILS above.
 """
 
 
@@ -167,6 +175,8 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
         prompt = SUMMARY_PROMPT_TEMPLATE.format(
             title=event.title or "Unknown",
             category=event.category or "Uncategorized",
+            genre=event.genre or "Unknown",
+            duration=event.duration or "Unknown",
             description=(event.description[:1000] + "...") if event.description else "No description",
             venue=event.venue or "Unknown venue",
             city=event.city or "Unknown city",

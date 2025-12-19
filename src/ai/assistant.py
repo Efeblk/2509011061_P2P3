@@ -37,16 +37,8 @@ class EventAssistant:
         """Classifies user query into one of the known categories."""
         from src.ai.schemas import IntentResponse, EventIntent
 
-        # Simple keyword shortcuts for speed/cost
-        q = query.lower()
-        if "date" in q or "romantic" in q:
-            return "date-night"
-        if "weekend" in q:
-            return "this-weekend"
-        if "cheap" in q or "value" in q or "budget" in q:
-            return "best-value"
-        if "hidden" in q or "unique" in q or "niche" in q:
-            return "hidden-gems"
+        # Simple keyword shortcuts removed to prevent false positives for specific queries.
+        # We rely on the LLM to decide if it's a general intent or a specific search.
 
         # Fallback to AI for ambiguous queries
         prompt = f"""
@@ -54,9 +46,24 @@ class EventAssistant:
         
         Query: "{query}"
         
-        Classify the user's intent into one of the available categories.
-        If the query is specific (e.g. "Jazz concerts", "Workshops in Kadikoy"), classify as SEARCH.
-        Only use specific categories if the query strongly matches the vibe.
+        Identify the user's PRIMARY intent.
+        
+        Available Intents:
+        - best-value: Vague/general request for cheap/good value events.
+        - date-night: Vague/general request for romantic spots.
+        - this-weekend: General request for weekend plans.
+        - hidden-gems: General request for unique/niche events.
+        - search: SPECIFIC request matching a genre, artist, venue, or subject (e.g. "Jazz", "Stand-up", "Rock").
+
+        CRITICAL RULE: 
+        If the query specifies a GENRE (Jazz, Rock, Comedy), ARTIST, or TOPIC... ALWAYS classify as SEARCH.
+        Even if they mention "value" or "date", if there is a specific subject like "Jazz", it is a SEARCH.
+
+        Examples:
+        - "I want cheap events" -> best-value
+        - "Cheap Jazz concerts" -> search (Because "Jazz" is specific)
+        - "Romantic dinner" -> date-night
+        - "Romantic comedy play" -> search (Because "comedy play" is specific)
         """
 
         try:
@@ -93,17 +100,22 @@ class EventAssistant:
         Query: "{query}"
         
         Rules:
-        1. max_price: Extract number if user mentions price/budget (e.g. "under 500" -> 500).
-        2. city: Extract city name (e.g. "Istanbul", "Ankara").
-        3. category: Extract event type (e.g. "Jazz", "Theater", "Concert").
-        4. date_range: Calculate start/end dates (YYYY-MM-DD) based on Current Date.
-           - "tomorrow" -> start=end={today} + 1 day
-           - "this weekend" -> next Friday to Sunday
-           - If no date mentioned, set to null.
+        1. max_price: Extract number if user mentions price/budget.
+        2. city: Extract city name.
+        3. category: Extract event type (e.g. "Jazz", "Theater").
+        4. genre: Extract genre. IMPORTANT: Translate common genres to Turkish if possible (e.g. "Comedy" -> "Komedi", "Stand up" -> "Stand up", "Concert" -> "Konser", "Theater" -> "Tiyatro").
+        5. duration: Extract duration.
+        6. date_range: Calculate start/end dates.
         
+        Constraints:
+        - Only set fields that are EXPLICITLY mentioned in the query.
+        - Do not guess or hallucinate values.
+        - If a field is not mentioned, it MUST be skipped or null.
+
         Examples:
-        - "Jazz in Istanbul under 500TL" -> {{"max_price": 500, "city": "Istanbul", "category": "Jazz", "date_range": null}}
-        - "Events tomorrow" -> {{"date_range": {{"start": "...", "end": "..."}}, "max_price": null, "city": null, "category": null}}
+        - "Jazz in Istanbul" -> {{"city": "İstanbul", "category": "Caz"}}
+        - "Cheap events" -> {{"max_price": 500}} (implied budget)
+        - "Rock concerts under 1000TL" -> {{"category": "Konser", "genre": "Rock", "max_price": 1000}}
         """
 
         try:
@@ -131,7 +143,7 @@ class EventAssistant:
             logger.error(f"Filter extraction failed: {e}")
             return {}
 
-    async def search(self, query: str) -> List[Tuple[float, Any]]:
+    async def search(self, query: str) -> List[Tuple[float, Any, Dict]]:
         """
         Perform hybrid search:
         1. Extract filters (price, date, city).
@@ -139,10 +151,9 @@ class EventAssistant:
         3. Rank candidates via Vector Search.
         """
         logger.info(f"Searching for: {query}")
-
+        
         # 1. Extract Filters
         filters = await self.extract_filters(query)
-        logger.info(f"Extracted filters: {filters}")
 
         # 2. Build Cypher Filter Query
         cypher_where = []
@@ -155,6 +166,19 @@ class EventAssistant:
         if filters.get("city"):
             cypher_where.append("toLower(e.city) CONTAINS toLower($city)")
             params["city"] = filters["city"]
+
+        if filters.get("category"):
+            cypher_where.append("toLower(e.category) CONTAINS toLower($category)")
+            params["category"] = filters["category"]
+
+        if filters.get("genre"):
+            cypher_where.append("toLower(e.genre) CONTAINS toLower($genre)")
+            params["genre"] = filters["genre"]
+
+        if filters.get("duration"):
+            # Duration is string (e.g. "120 dakika"), simple contains search
+            cypher_where.append("toLower(e.duration) CONTAINS toLower($duration)")
+            params["duration"] = filters["duration"]
 
         if filters.get("date_range"):
             dr = filters["date_range"]
@@ -219,9 +243,65 @@ class EventAssistant:
 
         # 5. Sort
         results.sort(key=lambda x: x[0], reverse=True)
-        return results[:10]
+        
+        # 6. Group Recurring Events
+        grouped_results = []
+        seen_titles = {} # title -> index in grouped_results
+        
+        for score, s in results:
+            # Get basic details for grouping (we need title, which means we might need a quick fetch or store it in summary)
+            # Optimization: Fetch details later. For now, group by EVENT UUID is pointless, we need Title.
+            # But we don't have title here. We only have AISummaryNode.
+            # We can use s.title if we add it to AISummaryNode, or we fetch it.
+            # Given we return 10 results, fetching 10-20 details is cheap.
+            pass
 
-    async def generate_answer(self, query: str, top_results: List[Tuple[float, Any]]) -> str:
+        # Since we don't have titles in AISummaryNode, we can't group accurately without fetching.
+        # Strategy: Return top 20 candidates, fetch details, group in Python, return top 5 groups.
+        
+        final_results_with_details = []
+        
+        for score, s in results[:20]: # Look at top 20 to find groups
+            details = await self._fetch_event_details(s.event_uuid)
+            if not details: continue
+            
+            title = details['title']
+            
+            # Check if this title is already in our list
+            found = False
+            for existing in final_results_with_details:
+                e_score, e_summary, e_details = existing
+                if e_details['title'] == title:
+                    # Duplicate (Recurring) Event found!
+                    # Logic: Keep the one with higher score (already sorted), just append date info?
+                    # Or better: Create a "grouped" display representation
+                    # We accept the earlier (higher score) one as the 'main' representation
+                    # But we append the new date to it
+                    if "dates" not in e_details:
+                        e_details["dates"] = [e_details["date"]]
+                    
+                    if details["date"] not in e_details["dates"]:
+                        e_details["dates"].append(details["date"])
+                    
+                    found = True
+                    break
+            
+            if not found:
+                details["dates"] = [details["date"]]
+                final_results_with_details.append((score, s, details))
+                
+        # Format for return: standard list, but now we've deduplicated by title.
+        # We need to adapt generate_answer and the UI to handle 'dates' list if present.
+        # But wait, search() returns List[Tuple[float, AISummaryNode]].
+        # If I change return type, I break `generate_answer` and `ask.py`.
+        # Hack: Pass the "dates" info via the summary object or a hidden attribute? 
+        # Or better: `search` returns `List[Tuple[float, AISummaryNode]]` is too restrictive.
+        # Let's clean this up: `search` should returns `List[Tuple[float, AISummaryNode, Dict]]` (score, summary, details).
+        
+        # REFACTOR: search() now returns rich objects.
+        return final_results_with_details[:10]
+
+    async def generate_answer(self, query: str, top_results: List[Tuple[float, Any, Dict]]) -> str:
         """
         Generates a conversational answer based on search results (RAG).
         """
@@ -230,11 +310,16 @@ class EventAssistant:
 
         # Fetch details for context
         events_context = []
-        for score, summary in top_results[:5]:  # Use top 5 for context
-            details = await self._fetch_event_details(summary.event_uuid)
+        for score, summary, details in top_results[:5]:  # Use top 5 for context, unpack triplet
             if details:
+                # Handle grouped dates if present
+                date_str = details['date']
+                if "dates" in details and len(details["dates"]) > 1:
+                     sorted_dates = sorted(details["dates"])
+                     date_str = f"{sorted_dates[0]} to {sorted_dates[-1]} ({len(sorted_dates)} shows)"
+
                 events_context.append(
-                    f"- {details['title']} @ {details['venue']} ({details['date']}, {details['price']} TL): {summary.sentiment_summary}"
+                    f"- {details['title']} @ {details['venue']} ({date_str}, {details['price']} TL): {summary.sentiment_summary}"
                 )
 
         context_str = "\n".join(events_context)
@@ -278,7 +363,7 @@ class EventAssistant:
 
     async def _fetch_event_details(self, uuid: str) -> Optional[Dict[str, Any]]:
         """Helper to fetch event details by UUID."""
-        query = "MATCH (e:Event {uuid: $uuid}) RETURN e.title, e.venue, e.date, e.price, e.city"
+        query = "MATCH (e:Event {uuid: $uuid}) RETURN e.title, e.venue, e.date, e.price, e.city, e.genre, e.duration"
         try:
             res = db_connection.execute_query(query, {"uuid": uuid})
             if res and res.result_set:
@@ -289,6 +374,8 @@ class EventAssistant:
                     "date": row[2],
                     "price": row[3],
                     "city": row[4],
+                    "genre": row[5],
+                    "duration": row[6],
                 }
             return None
         except Exception:

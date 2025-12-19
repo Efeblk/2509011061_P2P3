@@ -155,7 +155,28 @@ class FalkorDBPipeline:
                 # Full update/create
                 query = """
                     MERGE (n:Event {uuid: $uuid})
-                    SET n = {uuid: $uuid, title: $title, description: $description, date: $date, venue: $venue, city: $city, price: $price, price_range: $price_range, category_prices: $category_prices, url: $url, image_url: $image_url, category: $category, source: $source, ai_score: $ai_score, ai_verdict: $ai_verdict, ai_reasoning: $ai_reasoning, created_at: $created_at, updated_at: $updated_at}
+                    SET n = {
+                        uuid: $uuid, 
+                        title: $title, 
+                        description: $description, 
+                        date: $date, 
+                        venue: $venue, 
+                        city: $city, 
+                        price: $price, 
+                        price_range: $price_range, 
+                        category_prices: $category_prices, 
+                        url: $url, 
+                        image_url: $image_url, 
+                        category: $category, 
+                        genre: $genre,
+                        duration: $duration,
+                        source: $source, 
+                        ai_score: $ai_score, 
+                        ai_verdict: $ai_verdict, 
+                        ai_reasoning: $ai_reasoning, 
+                        created_at: $created_at, 
+                        updated_at: $updated_at
+                    }
                     RETURN n
                 """
 
@@ -173,6 +194,8 @@ class FalkorDBPipeline:
                     "url": item["url"],
                     "image_url": item.get("image_url") or "",
                     "category": item.get("category") or "Etkinlik",
+                    "genre": item.get("genre") or "",
+                    "duration": item.get("duration") or "",
                     "source": item["source"],
                     "ai_score": 0.0,
                     "ai_verdict": "",

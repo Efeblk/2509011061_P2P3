@@ -27,6 +27,16 @@ TOURNAMENTS = [
         "name": "Top Picks This Weekend",
         "criteria": "The absolute best events happening this coming weekend (Friday-Sunday). diverse mix of genres.",
     },
+    {
+        "slug": "stand-up-comedy",
+        "name": "Top Stand-up Comedy",
+        "criteria": "Best stand-up comedy shows. Look for 'genre: Stand up' or 'Comedy'. Prioritize famous comedians or highly rated shows.",
+    },
+    {
+        "slug": "opera-ballet",
+        "name": "Opera & Ballet Selection",
+        "criteria": "High-culture performances. Look for 'genre: Opera', 'Bale', or 'Klasik'. Focus on prestigious venues and major productions.",
+    },
 ]
 
 import argparse

@@ -92,140 +92,120 @@ class BiletinialSpider(BaseEventSpider):
         """Parse the main events listing page."""
         page = response.meta["playwright_page"]
 
+
+
+        # USE wait_for_selector to ensure we don't miss it due to loading lag
+        detail_container = None
         try:
-            # DEBUG: Check if we are on a detail page (via start_url override)
-            # If we see a detail page container, process it directly
-            detail_container = await page.query_selector(".movie-detail-content, .yds_cinema_movie_thread_info, .event-detail-content")
-            if detail_container:
-                self.logger.info("🐞 DEBUG MODE: Direct detail page detected, parsing single event...")
-                async for item in self.parse_event_detail(response):
-                    yield item
-                return
+            # Wait up to 5s for any detail indicator
+            detail_container = await page.wait_for_selector(
+                ".movie-detail-content, .yds_cinema_movie_thread, .yds_cinema_movie_thread_info, .event-detail-content", 
+                timeout=5000
+            )
+        except Exception:
+            pass
 
-            # Check if we need to select a city (for category pages like concerts)
-            # Look for city selector dropdown
+        if detail_container:
+            self.logger.info("🐞 DEBUG MODE: Direct detail page detected, parsing single event...")
+            async for item in self.parse_event_detail(response):
+                yield item
+            return
+
+        # Check if we need to select a city (for category pages like concerts)
+        # Look for city selector dropdown
+        try:
+            # Try the concerts page city selector first
+            city_selector = page.locator("select#citySelect, select.customSelect").first
+            is_selector_visible = await city_selector.is_visible(timeout=3000)
+
+            if is_selector_visible:
+                self.logger.info("🔍 Found city selector, selecting İstanbul...")
+
+                # Select Istanbul from dropdown (value="147" for İstanbul Tümü)
+                await city_selector.select_option(value="147")
+                self.logger.info("✓ Selected İstanbul from city selector")
+
+                # Wait for the filter to apply (JavaScript onchange event)
+                await asyncio.sleep(5)
+            else:
+                # Try the modal-based city selector (yhm_select_city)
+                modal_selector = page.locator("select.yhm_select_city, select[name='city']").first
+                is_modal_visible = await modal_selector.is_visible(timeout=2000)
+
+                if is_modal_visible:
+                    self.logger.info("🔍 Found modal city selector, selecting İstanbul...")
+                    await modal_selector.select_option(value="istanbul")
+
+                    save_button = page.locator("button.yhm_save").first
+                    if await save_button.is_visible(timeout=2000):
+                        await save_button.click()
+                        self.logger.info("✓ Clicked save button")
+                        await asyncio.sleep(5)
+        except Exception as e:
+            self.logger.info(f"No city selector found (page may already be city-specific): {e}")
+
+        # Wait for event list to load (different selectors for different page types)
+        event_list_selector = None
+        try:
+            # Try city-specific page layout first
+            await page.wait_for_selector("ul.sehir-detay__liste", timeout=5000)
+            event_list_selector = "ul.sehir-detay__liste li"
+            self.logger.info("✓ Event list loaded (city-specific layout)")
+        except Exception:
             try:
-                # Try the concerts page city selector first
-                city_selector = page.locator("select#citySelect, select.customSelect").first
-                is_selector_visible = await city_selector.is_visible(timeout=3000)
-
-                if is_selector_visible:
-                    self.logger.info("🔍 Found city selector, selecting İstanbul...")
-
-                    # Select Istanbul from dropdown (value="147" for İstanbul Tümü)
-                    await city_selector.select_option(value="147")
-                    self.logger.info("✓ Selected İstanbul from city selector")
-
-                    # Wait for the filter to apply (JavaScript onchange event)
-                    await asyncio.sleep(5)
-                else:
-                    # Try the modal-based city selector (yhm_select_city)
-                    modal_selector = page.locator("select.yhm_select_city, select[name='city']").first
-                    is_modal_visible = await modal_selector.is_visible(timeout=2000)
-
-                    if is_modal_visible:
-                        self.logger.info("🔍 Found modal city selector, selecting İstanbul...")
-                        await modal_selector.select_option(value="istanbul")
-
-                        save_button = page.locator("button.yhm_save").first
-                        if await save_button.is_visible(timeout=2000):
-                            await save_button.click()
-                            self.logger.info("✓ Clicked save button")
-                            await asyncio.sleep(5)
-            except Exception as e:
-                self.logger.info(f"No city selector found (page may already be city-specific): {e}")
-
-            # Wait for event list to load (different selectors for different page types)
-            event_list_selector = None
-            try:
-                # Try city-specific page layout first
-                await page.wait_for_selector("ul.sehir-detay__liste", timeout=5000)
-                event_list_selector = "ul.sehir-detay__liste li"
-                self.logger.info("✓ Event list loaded (city-specific layout)")
+                # Try category page layout (music, theater) - kategori__etkinlikler
+                await page.wait_for_selector("#kategori__etkinlikler ul", timeout=5000)
+                event_list_selector = "#kategori__etkinlikler ul li"
+                self.logger.info("✓ Event list loaded (kategori__etkinlikler layout)")
             except Exception:
                 try:
-                    # Try category page layout (music, theater) - kategori__etkinlikler
-                    await page.wait_for_selector("#kategori__etkinlikler ul", timeout=5000)
-                    event_list_selector = "#kategori__etkinlikler ul li"
-                    self.logger.info("✓ Event list loaded (kategori__etkinlikler layout)")
+                    # Try category page layout with resultsGrid (concerts, etc.)
+                    await page.wait_for_selector(".resultsGrid", timeout=5000)
+                    event_list_selector = ".resultsGrid > a"
+                    self.logger.info("✓ Event list loaded (resultsGrid layout)")
                 except Exception:
-                    try:
-                        # Try category page layout with resultsGrid (concerts, etc.)
-                        await page.wait_for_selector(".resultsGrid", timeout=5000)
-                        event_list_selector = ".resultsGrid > a"
-                        self.logger.info("✓ Event list loaded (resultsGrid layout)")
-                    except Exception:
-                        try:
-                            # Try older category layout
-                            await page.wait_for_selector("ul.yeniArama__sonuc__data", timeout=5000)
-                            event_list_selector = "ul.yeniArama__sonuc__data li"
-                            self.logger.info("✓ Event list loaded (yeniArama layout)")
-                        except Exception as e:
-                            self.logger.warning(f"No event list found: {e}")
+                    pass
 
-            # Skip further processing if no event list found
-            if not event_list_selector:
-                self.logger.warning("⚠️ No event list found (page might be empty), skipping this page")
-                return
+        if not event_list_selector:
+             self.logger.warning("Simplified fallback: No events found")
+             await page.close()
+             return
 
-            # Wait a bit for dynamic content
-            await asyncio.sleep(2)
+        # Wait a bit for dynamic content
+        await asyncio.sleep(2)
 
-            # Click "Daha Fazla Yükle" (Load More) button multiple times
-            max_clicks = 500  # Increased from 20 to cover all events
-            clicks = 0
+        # Click "Daha Fazla Yükle" (Load More) button multiple times
+        max_clicks = 500
+        clicks = 0
 
-            self.logger.info("🔄 Looking for 'Daha Fazla Yükle' button...")
+        self.logger.info("🔄 Looking for 'Daha Fazla Yükle' button...")
 
-            for i in range(max_clicks):
-                try:
-                    # Count events before clicking (use the detected selector)
-                    events_before = await page.locator(event_list_selector).count()
+        for i in range(max_clicks):
+            try:
+                # Count events before clicking (use the detected selector)
+                events_before = await page.locator(event_list_selector).count()
 
-                    # Optimization: Stop catching if we already have enough events
-                    if self.limit and events_before >= self.limit:
-                        self.logger.info(f"✓ Limit reached ({self.limit} events), stopping 'Load More' clicks.")
-                        break
-
-                    # Look for the load more button
-                    # Common selectors for "Load More" buttons on Turkish sites
-                    load_more_button = page.locator(
-                        "button:has-text('Daha Fazla'), button:has-text('daha fazla'), a:has-text('Daha Fazla'), a:has-text('daha fazla')"
-                    ).first
-
-                    # Check if button is visible
-                    is_visible = await load_more_button.is_visible(timeout=2000)
-
-                    if not is_visible:
-                        self.logger.info(f"✓ No more 'Daha Fazla Yükle' button found after {clicks} clicks")
-                        break
-
-                    # Click the button
-                    await load_more_button.click()
-                    clicks += 1
-                    self.logger.info(f"🖱️  Click #{clicks} - Loading more events...")
-
-                    # Wait for new content to load
-                    await asyncio.sleep(3)
-
-
-                    # Count events after clicking
-                    events_after = await page.locator(event_list_selector).count()
-                    new_events = events_after - events_before
-
-                    self.logger.info(f"   Found {events_after} events total (+{new_events} new)")
-
-                    # If no new events loaded, stop clicking
-                    if new_events == 0:
-                        self.logger.info("✓ No new events loaded, stopping")
-                        break
-
-                except Exception as e:
-                    self.logger.info(f"✓ Button not found or error after {clicks} clicks: {e}")
+                # Optimization: Stop catching if we already have enough events
+                if self.limit and events_before >= self.limit:
+                    self.logger.info(f"✓ Limit reached ({self.limit} events), stopping 'Load More' clicks.")
                     break
 
-            if clicks > 0:
-                self.logger.info(f"✅ Clicked 'Daha Fazla Yükle' button {clicks} times")
+
+                # Look for the load more button
+                load_more_button = page.locator("a.btn.btn-block.btn-primary.btn-lg.btn-load-more, .daha-fazla-yukle, a:has-text('Daha Fazla')").first
+                if await load_more_button.is_visible(timeout=2000):
+                    await load_more_button.click()
+                    await asyncio.sleep(2)
+                    clicks += 1
+                else:
+                     self.logger.info("✓ No 'Load More' button found.")
+                     break
+            except Exception as e:
+                self.logger.info(f"✓ Error during load more loop: {e}")
+                break
+
+        if True:  # Changed from if clicks > 0
+            self.logger.info(f"✅ Finished pagination loop after {clicks} clicks")
 
             # Replace response body
             content = await page.content()
@@ -357,8 +337,7 @@ class BiletinialSpider(BaseEventSpider):
             else:
                 self.logger.info(f"✅ All {total_on_page} events successfully processed!")
 
-        finally:
-            await page.close()
+        await page.close()
 
     async def parse_event_detail(self, response):
         """
@@ -373,8 +352,51 @@ class BiletinialSpider(BaseEventSpider):
             # Wait for page to load
             await page.wait_for_load_state("domcontentloaded")
             await asyncio.sleep(2)  # Wait for dynamic content
+            
+            # Initialize metadata variables
+            refined_category = None
+            genre = None
+            duration = None
 
             # Check for SOLD OUT first - MOVED TO SCOPED SECTION
+            duration = None
+
+            # --- NEW METADATA EXTRACTION (Global Scope) ---
+            # 1. Refine Category from top paragraph (e.g., "Seyfi Bey Tiyatro Oyunu")
+            try:
+                cat_el = await page.query_selector(".yds_cinema_movie_thread_info p")
+                if cat_el:
+                    cat_text = await cat_el.inner_text()
+                    if cat_text:
+                        refined_category = self.clean_text(cat_text)
+                        self.logger.info(f"✓ Extracted specific category: {refined_category}")
+            except Exception as e:
+                self.logger.debug(f"Category extraction failed: {e}")
+
+            # 2. Extract Genre (Etkinlik Türü)
+            try:
+                # Look for strong tag with "Etkinlik Türü" and get following span
+                genre_el = await page.query_selector('.yds_cinema_movie_thread_detail li strong:has-text("Etkinlik Türü") + span')
+                if genre_el:
+                    genre = await genre_el.inner_text()
+                    if genre:
+                        genre = self.clean_text(genre)
+                        self.logger.info(f"✓ Extracted genre: {genre}")
+            except Exception as e:
+                self.logger.debug(f"Genre extraction failed: {e}")
+
+            # 3. Extract Duration (Süre)
+            try:
+                dur_el = await page.query_selector('.yds_cinema_movie_thread_detail li strong:has-text("Süre") + span')
+                if dur_el:
+                    duration = await dur_el.inner_text()
+                    if duration:
+                        duration = self.clean_text(duration)
+                        self.logger.info(f"✓ Extracted duration: {duration}")
+            except Exception as e:
+                self.logger.debug(f"Duration extraction failed: {e}")
+            # -------------------------------
+            
             is_sold_out = False
             final_price = None
 
@@ -735,7 +757,10 @@ class BiletinialSpider(BaseEventSpider):
                         category_prices=response.meta.get("category_prices"),  # Pass extracted category prices
                         url=response.url,
                         image_url=image_url,
-                        category=event_type,
+                        # Use refined category if found, otherwise fallback to meta/Etkinlik
+                        category=refined_category if refined_category else event_type,
+                        genre=genre,
+                        duration=duration,
                         source="biletinial",
                         rating=rating,
                         rating_count=rating_count,
@@ -763,7 +788,9 @@ class BiletinialSpider(BaseEventSpider):
                     extracted_entities=await self.extract_entities(page),  # Extract structured entities
                     url=url,
                     image_url=image_url,
-                    category=event_type,
+                    category=refined_category if refined_category else event_type,
+                    genre=genre,
+                    duration=duration,
                     source="biletinial",
                     uuid=response.meta.get("uuid") or str(uuid.uuid4()),
                 )
@@ -781,6 +808,8 @@ class BiletinialSpider(BaseEventSpider):
                 url=response.meta.get("url"),
                 image_url=response.meta.get("image_url"),
                 category=response.meta.get("event_type", "Etkinlik"),
+                genre=None,
+                duration=None,
                 source="biletinial",
                 uuid=response.meta.get("uuid") or str(uuid.uuid4()),
             )

@@ -44,6 +44,15 @@ async def main():
         print(f"📊 Total Summaries: {total}")
         print(f"⭐ Average Quality Score: {avg_score:.2f} (Range: {min_score}-{max_score})")
 
+        # 1b. Metadata Coverage Check (Genre/Duration)
+        query_meta = """
+        MATCH (s:AISummary)<-[:HAS_AI_SUMMARY]-(e:Event)
+        WHERE e.genre IS NOT NULL OR e.duration IS NOT NULL
+        RETURN count(s) as enriched_summaries
+        """
+        enriched_count = db_connection.graph.query(query_meta).result_set[0][0]
+        print(f"🎭 Summaries with Source Metadata (Genre/Duration): {enriched_count}/{total} ({enriched_count/total*100:.1f}%)")
+
         # 2. Boilerplate / Low Quality Detection
         # Check for summaries that mention "No content" or "No reviews"
         # We'll need to fetch the actual text for this.
