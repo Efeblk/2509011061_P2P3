@@ -165,42 +165,99 @@ async def run_tournament(
     """Run full tournament."""
     logger.info(f"🏆 Starting Tournament: {category_name} (Dry Run: {dry_run}, Limit: {candidate_limit})")
 
-    # 1. Fetch Candidates (Events with AI Summaries)
-    # We get compact data to save tokens
+    # 1. Fetch Candidates (Vector Search Pre-filter)
     from src.database.connection import db_connection
+    client = get_ai_client()
+    
+    # Embed the criteria to find semantically relevant events
+    # e.g. "Romantic date night" -> Vector
+    logger.info(f"Generating embedding for criteria: '{criteria[:50]}...'")
+    criteria_vec = client.embed(criteria)
+    
+    if not criteria_vec:
+        logger.error("Failed to generate embedding for criteria. Aborting.")
+        return
 
-    # Connection is implicit
-
-    limit_clause = f"LIMIT {candidate_limit}" if candidate_limit > 0 else ""
-
+    # Default to 50 candidates if no limit specified, or use provided limit
+    # We want enough candidates for the LLM to rank, but not too many to burn tokens.
+    search_limit = candidate_limit if candidate_limit > 0 else 50
+    
+    # Vector Search Query
+    # We find the top N AISummary nodes that match the criteria embedding
+    # Then we fetch the connected Event details
     query = f"""
-    MATCH (e:Event)-[:HAS_AI_SUMMARY]->(s:AISummary)
-    RETURN e.uuid, e.title, e.date, s.sentiment_summary, s.importance, s.value_rating, s.quality_score, e.genre, e.duration
-    {limit_clause}
+    CALL db.idx.vector.queryNodes('AISummary', 'embedding', $limit, vecf32($vec)) YIELD node AS s, score
+    MATCH (e:Event)-[:HAS_AI_SUMMARY]->(s)
+    RETURN e.uuid, e.title, e.date, s.sentiment_summary, s.importance, s.value_rating, s.quality_score, e.genre, e.duration, score
     """
-    res = db_connection.graph.query(query).result_set
-
+    
     all_candidates = []
-    for row in res:
-        # Filter out very low quality scores before even trying
-        quality = row[6]
-        if quality and quality < 3:
-            continue
+    
+    # helper to parse row
+    def parse_row(row, score=0.0):
+        # row indexes depend on query
+        # Vector Query: e.uuid, e.title, e.date, s.sentiment_summary, s.importance, s.value_rating, s.quality_score, e.genre, e.duration, score
+        # Fallback Query: e.uuid, e.title, e.date, s.sentiment_summary, s.importance, s.value_rating, s.quality_score, e.genre, e.duration
+        
+        # We normalize to dict
+        return {
+            "uuid": row[0],
+            "title": row[1],
+            "date": row[2],
+            "summary": row[3],
+            "importance": row[4],
+            "value": row[5],
+            "genre": row[7] or "",
+            "duration": row[8] or "",
+            "vector_score": score
+        }
 
-        all_candidates.append(
-            {
-                "uuid": row[0], 
-                "title": row[1], 
-                "date": row[2], 
-                "summary": row[3], 
-                "importance": row[4], 
-                "value": row[5],
-                "genre": row[7] or "",
-                "duration": row[8] or ""
-            }
-        )
+    vector_success = False
+    
+    try:
+        # Pass vector as list (FalkorDB client handles it, or use manual vecf32 literal if needed)
+        # Based on verify_rag, we need vecf32($vec) in Cypher and pass list in params
+        params = {"limit": search_limit, "vec": criteria_vec}
+        res = db_connection.execute_query(query, params)
+        
+        if res and res.result_set:
+            vector_success = True
+            for row in res.result_set:
+                # Filter out very low quality scores
+                quality = row[6]
+                if quality and isinstance(quality, (int, float)) and quality < 3:
+                    continue
+                all_candidates.append(parse_row(row, score=row[9]))
+        else:
+             logger.warning("Vector search returned 0 results. Triggering fallback.")
 
-    logger.info(f"Found {len(all_candidates)} eligible candidates.")
+    except Exception as e:
+        logger.warning(f"Vector search failed ({e}). Falling back to full scan.")
+
+    # FALLBACK: If vector search failed or returned empty
+    if not all_candidates:
+        logger.info("Fallback: Fetching recent candidates (Semantic Search skipped)...")
+        # Fallback query: Sort by date or importance? Just grab recent ones.
+        # We LIMIT to 100 to avoid blowing up context, but enough to find good matches.
+        query_fallback = f"""
+        MATCH (e:Event)-[:HAS_AI_SUMMARY]->(s:AISummary)
+        RETURN e.uuid, e.title, e.date, s.sentiment_summary, s.importance, s.value_rating, s.quality_score, e.genre, e.duration
+        LIMIT 200
+        """
+        try:
+            res = db_connection.execute_query(query_fallback)
+            if res and res.result_set:
+                for row in res.result_set:
+                    quality = row[6]
+                    if quality and isinstance(quality, (int, float)) and quality < 3:
+                        continue
+                    # Calc simple score? No, just pass 0.0
+                    all_candidates.append(parse_row(row, score=0.0))
+                logger.info(f"Fallback: Found {len(all_candidates)} candidates.")
+        except Exception as e:
+             logger.error(f"Fallback failed: {e}")
+
+    logger.info(f"Found {len(all_candidates)} eligible candidates total.")
 
     if not all_candidates:
         logger.warning("No candidates found. Tournament cancelled.")

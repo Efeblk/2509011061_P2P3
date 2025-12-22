@@ -13,7 +13,7 @@ from src.ai.enrichment import get_ai_client
 from src.database.connection import db_connection
 from src.models.ai_summary import AISummaryNode
 from src.models.event import EventNode
-
+from src.ai.schemas import RerankResponse
 CATEGORIES = {
     "best-value": "High quality events with great value for money.",
     "date-night": "Romantic, intimate, impressive date spots.",
@@ -217,88 +217,155 @@ class EventAssistant:
             logger.error("Could not generate embedding for query.")
             return []
 
-        # 4. Fetch Summaries & Rank
-        # Optimization: If candidate_uuids is small, we could fetch only those.
-        # But get_all_summaries is cached/fast enough for now.
-        summaries = await AISummaryNode.get_all_summaries(limit=5000)
-
+        # 4. Vector Search (Database or Hybrid)
         results = []
+        semantic_candidates = []
 
-        for s in summaries:
-            # Filter by candidates if filters exist
-            if candidate_uuids is not None and s.event_uuid not in candidate_uuids:
-                continue
+        try:
+            # Try Database Vector Search first
+            # Syntax: CALL db.idx.vector.queryNodes('AISummary', 'embedding', $k, $vec) YIELD node, score
+            # We fetch more than needed (20) to allow for re-ranking
+            logger.info("Attempting Database Vector Search...")
+            k_neighbors = 20
+            
+            # Note: We use vecf32() to cast the list to a vector
+            vec_query = "CALL db.idx.vector.queryNodes('AISummary', 'embedding', $k, vecf32($vec)) YIELD node, score RETURN node, score"
+            vec_params = {'k': k_neighbors, 'vec': query_vec}
+            
+            res = db_connection.execute_query(vec_query, vec_params)
+            
+            if res and res.result_set:
+                logger.info(f"Database Vector Search returned {len(res.result_set)} results.")
+                for row in res.result_set:
+                    node_data = row[0] # Node object or node properties
+                    score = row[1]
+                    
+                    # Parse Node Data
+                    summary_node = None
+                    if hasattr(node_data, 'properties'):
+                        # FalkorDB Node object
+                        summary_node = AISummaryNode(**node_data.properties)
+                        # Fix types if needed (embedding extraction might be string)
+                    else:
+                        # Assuming dict/map
+                        # Only applicable if using older client or weird response
+                        pass # TODO: Robust parsing
+                        
+                    if summary_node:
+                        # Filter by Cypher constraints if strictly required?
+                        # Vector search is approximate. If we have HARD filters (city, date), 
+                        # we should intersect candidate_uuids.
+                        if candidate_uuids is not None and summary_node.event_uuid not in candidate_uuids:
+                            continue
+                            
+                        results.append((score, summary_node))
 
-            if not s.embedding:
-                continue
+            else:
+                logger.warning("Database Vector Search returned empty.")
+        
+        except Exception as e:
+            logger.warning(f"Database Vector Search failed ({e}).")
 
-            try:
-                vec = json.loads(s.embedding)
-                # Cosine Similarity
-                score = np.dot(query_vec, vec) / (np.linalg.norm(query_vec) * np.linalg.norm(vec))
+        # Fallback if no results from DB
+        if not results:
+            logger.info("Falling back to In-Memory Search.")
+            # --- Fallback: In-Memory Search ---
+            summaries = await AISummaryNode.get_all_summaries(limit=5000)
+            logger.info(f"Fallback: Checking {len(summaries)} summaries...")
+            for s in summaries:
+                # Filter first
+                if candidate_uuids is not None and s.event_uuid not in candidate_uuids:
+                    continue
+                if not s.embedding:
+                    continue
 
-                results.append((score, s))
-            except Exception:
-                continue
+                try:
+                    vec = s.get_embedding_vector()
+                    if not vec: continue
+                    
+                    # Ensure it's not a string
+                    if isinstance(vec, str):
+                         vec = json.loads(vec)
 
-        # 5. Sort
+                    # Cosine Similarity
+                    score = np.dot(query_vec, vec) / (np.linalg.norm(query_vec) * np.linalg.norm(vec))
+                    if score > 0.3: # Lower threshold for debug
+                        results.append((score, s))
+                except Exception as ex:
+                    # logger.warning(f"Math error in fallback: {ex}")
+                    continue
+            logger.info(f"Fallback: Found {len(results)} matches.")
+            # ----------------------------------
+
+        # 5. Sort & Top K
         results.sort(key=lambda x: x[0], reverse=True)
-        
-        # 6. Group Recurring Events
-        grouped_results = []
-        seen_titles = {} # title -> index in grouped_results
-        
-        for score, s in results:
-            # Get basic details for grouping (we need title, which means we might need a quick fetch or store it in summary)
-            # Optimization: Fetch details later. For now, group by EVENT UUID is pointless, we need Title.
-            # But we don't have title here. We only have AISummaryNode.
-            # We can use s.title if we add it to AISummaryNode, or we fetch it.
-            # Given we return 10 results, fetching 10-20 details is cheap.
-            pass
+        top_candidates = results[:20] # Take top 20 for re-ranking
 
-        # Since we don't have titles in AISummaryNode, we can't group accurately without fetching.
-        # Strategy: Return top 20 candidates, fetch details, group in Python, return top 5 groups.
+        # 6. Re-ranking (LLM Judge)
+        # We verify if the event ACTUALLY matches the user query intent beyond keywords.
+        final_results = []
         
-        final_results_with_details = []
+        # Determine if re-ranking is needed (optimization: skip for simple queries?)
+        # For now, always re-rank to ensure quality.
         
-        for score, s in results[:20]: # Look at top 20 to find groups
+        # Prepare candidates for LLM
+        # We need event details for the LLM to judge properly
+        candidate_details = []
+        for score, s in top_candidates:
             details = await self._fetch_event_details(s.event_uuid)
-            if not details: continue
+            if details:
+                candidate_details.append({
+                    "id": s.event_uuid,
+                    "title": details['title'],
+                    "summary": s.sentiment_summary,
+                    "score": score,
+                    "summary_obj": s,
+                    "details_obj": details
+                })
+
+        if candidate_details:
+            logger.info(f"Re-ranking {len(candidate_details)} candidates...")
+            reranked = await self._rerank_results(query, candidate_details)
             
-            title = details['title']
-            
-            # Check if this title is already in our list
-            found = False
-            for existing in final_results_with_details:
-                e_score, e_summary, e_details = existing
-                if e_details['title'] == title:
-                    # Duplicate (Recurring) Event found!
-                    # Logic: Keep the one with higher score (already sorted), just append date info?
-                    # Or better: Create a "grouped" display representation
-                    # We accept the earlier (higher score) one as the 'main' representation
-                    # But we append the new date to it
-                    if "dates" not in e_details:
-                        e_details["dates"] = [e_details["date"]]
-                    
-                    if details["date"] not in e_details["dates"]:
-                        e_details["dates"].append(details["date"])
-                    
-                    found = True
-                    break
-            
-            if not found:
-                details["dates"] = [details["date"]]
-                final_results_with_details.append((score, s, details))
+            # --- DEDUPLICATION LOGIC ---
+            grouped_results = {}
+            for score, summary_obj, details_obj in reranked:
+                key = (details_obj['title'], details_obj.get('venue', ''))
                 
-        # Format for return: standard list, but now we've deduplicated by title.
-        # We need to adapt generate_answer and the UI to handle 'dates' list if present.
-        # But wait, search() returns List[Tuple[float, AISummaryNode]].
-        # If I change return type, I break `generate_answer` and `ask.py`.
-        # Hack: Pass the "dates" info via the summary object or a hidden attribute? 
-        # Or better: `search` returns `List[Tuple[float, AISummaryNode]]` is too restrictive.
-        # Let's clean this up: `search` should returns `List[Tuple[float, AISummaryNode, Dict]]` (score, summary, details).
-        
-        # REFACTOR: search() now returns rich objects.
+                if key not in grouped_results:
+                    # New group
+                    grouped_results[key] = {
+                        "score": score,
+                        "summary": summary_obj,
+                        "details": details_obj,
+                        "dates": [details_obj.get('date')] if details_obj.get('date') else []
+                    }
+                else:
+                    # Existing group - merge
+                    group = grouped_results[key]
+                    group['score'] = max(group['score'], score) # Best score
+                    if details_obj.get('date'):
+                         group['dates'].append(details_obj.get('date'))
+            
+            # Flatten back to list
+            final_results_with_details = []
+            for item in grouped_results.values():
+                d = item['details']
+                # clean duplicate dates
+                unique_dates = sorted(list(set([x for x in item['dates'] if x])))
+                d['dates'] = unique_dates
+                
+                final_results_with_details.append((
+                    item['score'],
+                    item['summary'],
+                    d
+                ))
+                
+            # Re-sort by score
+            final_results_with_details.sort(key=lambda x: x[0], reverse=True)
+        else:
+            final_results_with_details = []
+
         return final_results_with_details[:10]
 
     async def generate_answer(self, query: str, top_results: List[Tuple[float, Any, Dict]]) -> str:
@@ -416,3 +483,74 @@ class EventAssistant:
         except Exception as e:
             logger.error(f"Collection fetch failed: {e}")
             return []
+
+    async def _rerank_results(self, query: str, candidates: List[Dict[str, Any]]) -> List[Tuple[float, Any, Dict]]:
+        """
+        Re-ranks candidates using LLM to filter irrelevant vector matches.
+        """
+        if not candidates:
+            return []
+
+        # Prepare context for LLM
+        # We only send minimal info to keep tokens low
+        docs = []
+        for i, c in enumerate(candidates):
+            docs.append(f"ID {i}: {c['title']} - {c['summary']}")
+        
+        docs_str = "\n".join(docs)
+
+        prompt = f"""
+        Rank the following events based on relevance to the user query.
+        
+        Query: "{query}"
+        
+        Events:
+        {docs_str}
+        
+        Task:
+        1. Identify events that are RELEVANT to the query.
+        2. Assign a relevance score (0.0 to 1.0).
+        3. Explain logic briefly.
+        
+        Return JSON list:
+        [{{ "id": 0, "score": 0.9, "reason": "Exact match" }}, ...]
+        
+        Filter out events with score < 0.4.
+        Sort by score descending.
+        """
+
+        try:
+            # Use reasoning client (Gemini/Mistral)
+            from src.ai.schemas import RerankResponse
+            response = await self.reasoning_client.generate_json(prompt, schema=RerankResponse)
+            
+            if not response or "results" not in response:
+                # Fallback: maintain original order
+                logger.warning("Re-ranking failed format, using original order.")
+                # Convert back to tuple format
+                return [(c['score'], c['summary_obj'], c['details_obj']) for c in candidates]
+
+            # Process AI rankings
+            final_results = []
+            
+            # Map ID back to candidate
+            # response['results'] is list of {id, score}
+            for res in response['results']:
+                idx = res.get("id")
+                score = res.get("score", 0)
+                if idx is not None and 0 <= idx < len(candidates) and score >= 0.4:
+                    cand = candidates[idx]
+                    # Update summary/reason if desired, but here we just re-score
+                    final_results.append((score, cand['summary_obj'], cand['details_obj']))
+            
+            # If AI filtered everything (rare), fallback to top 3 original
+            if not final_results:
+                logger.warning("Re-ranking filtered all results! Fallback to top 3.")
+                return [(c['score'], c['summary_obj'], c['details_obj']) for c in candidates[:3]]
+
+            return final_results
+
+        except Exception as e:
+            logger.error(f"Re-ranking error: {e}")
+            # Fallback
+            return [(c['score'], c['summary_obj'], c['details_obj']) for c in candidates]

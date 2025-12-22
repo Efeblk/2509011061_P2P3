@@ -3,9 +3,12 @@
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
+from datetime import datetime
+from typing import Optional, List, Dict, Any
 import json
 
 from src.models.base import Node
+from src.database.connection import db_connection
 
 
 @dataclass
@@ -43,7 +46,7 @@ class AISummaryNode(Node):
     bucket_list_worthy: bool = False
 
     # Embedding for similarity search
-    embedding: Optional[str] = None  # JSON-serialized vector [0.1, 0.2, ...]
+    embedding: Optional[List[float]] = None  # Native Vector storage
 
     # Full summary JSON (backup)
     summary_json: Optional[str] = None  # Complete AI response
@@ -109,14 +112,9 @@ class AISummaryNode(Node):
         except (json.JSONDecodeError, TypeError):
             return []
 
-    def get_embedding_vector(self) -> Optional[list[float]]:
-        """Parse embedding JSON to vector."""
-        if not self.embedding:
-            return None
-        try:
-            return json.loads(self.embedding)
-        except (json.JSONDecodeError, TypeError):
-            return None
+    def get_embedding_vector(self) -> Optional[List[float]]:
+        """Return embedding vector (ALREADY A LIST)."""
+        return self.embedding
 
     def to_compact_dict(self) -> dict:
         """
@@ -234,9 +232,23 @@ class AISummaryNode(Node):
 
             return None
 
+            return None
+
         except Exception as e:
             print(f"Error getting AI summary: {e}")
             return None
+
+    @staticmethod
+    def create_vector_index(dimension: int):
+        """Create vector index on AISummary nodes."""
+        try:
+            # Native Cypher syntax for FalkorDB >= 1.0
+            query = f"CREATE VECTOR INDEX FOR (s:AISummary) ON (s.embedding) OPTIONS {{dimension: {dimension}, similarityFunction: 'cosine'}}"
+            db_connection.graph.query(query)
+            print(f"Vector index created with dimension {dimension}.")
+        except Exception as e:
+            # Ignore if already exists
+            print(f"Index creation note: {e}")
 
     @staticmethod
     async def get_all_summaries(limit: int = 100) -> list["AISummaryNode"]:

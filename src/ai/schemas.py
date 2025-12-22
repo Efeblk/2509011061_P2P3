@@ -32,3 +32,13 @@ class SearchFilters(BaseModel):
     
     class Config:
         extra = "ignore"
+
+class RerankResult(BaseModel):
+    """Single reranked item."""
+    id: int = Field(..., description="The original index ID of the candidate.")
+    score: float = Field(..., description="Relevance score (0.0 - 1.0).")
+    reason: Optional[str] = Field(None, description="Reasoning for this score.")
+
+class RerankResponse(BaseModel):
+    """Response from reranking model."""
+    results: List[RerankResult] = Field(..., description="List of ranked results.")
