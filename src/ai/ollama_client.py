@@ -14,10 +14,10 @@ class OllamaClient:
     Mimics the interface of GeminiClient for easy swapping.
     """
 
-    def __init__(self):
+    def __init__(self, model_name: Optional[str] = None):
         """Initialize Ollama client."""
         self.base_url = settings.ollama.base_url
-        self.model = settings.ollama.model
+        self.model = model_name or settings.ollama.model
 
         # Validate Ollama connection on startup
         try:
@@ -98,8 +98,27 @@ class OllamaClient:
             json_prompt += "\nRespond strictly with VALID JSON."
 
         # If schema provided, append instruction
+        # If schema provided, append robust instruction
         if schema:
-            json_prompt += f"\n\nReturn JSON matching this schema:\n{schema.model_json_schema()}"
+            # Instead of dumping the full JSON schema (which confuses some local models),
+            # we try to generate a dummy example or just use a simplified prompt.
+            # Ideally, we should construct a "Example JSON" based on the schema fields.
+
+            try:
+                # Basic field extraction for a cleaner prompt
+                # schema.model_fields is available in Pydantic v2
+                fields = getattr(schema, "model_fields", {})
+                example_dict = {}
+                for name, field in fields.items():
+                    # Create dummy values based on type annotation (simplified)
+                    # We utilize the description if available to hint the model
+                    desc = field.description or "value"
+                    example_dict[name] = f"<{desc}>"
+
+                json_prompt += f"\n\nReturn a JSON object that matches the following example structure:\n{json.dumps(example_dict, indent=2)}"
+            except Exception:
+                # Fallback if introspection fails
+                json_prompt += f"\n\nReturn JSON object that matches this schema:\n{json.dumps(schema.model_json_schema(), indent=2)}"
 
         result = await self._generate_request(json_prompt, temperature=temperature, format="json", model=model)
 
@@ -117,7 +136,7 @@ class OllamaClient:
                 except Exception as e:
                     logger.error(f"Schema validation failed: {e}")
                     return None
-            
+
             return data
 
         except json.JSONDecodeError:

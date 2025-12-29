@@ -9,13 +9,14 @@ from src.models.event import EventNode
 from src.models.person import PersonNode
 from src.ai.enrichment import get_ai_client
 
+
 class EntityExtractor:
     """
     Extracts knowledge graph entities from event data.
     """
-    
+
     def __init__(self):
-        self.client = get_ai_client(use_reasoning=False) # Fast model is enough
+        self.client = get_ai_client(use_reasoning=False)  # Fast model is enough
 
     async def extract_and_link(self, event: EventNode):
         """
@@ -50,15 +51,15 @@ class EntityExtractor:
             {{"name": "Lorenzo Da Ponte", "role": "WROTE"}}
         ]
         """
-        
+
         try:
             # First, try to get raw text to see what it says
-            # response = await self.client.generate_json(prompt, temperature=0.0) 
+            # response = await self.client.generate_json(prompt, temperature=0.0)
             # We temporarily switch to generate_text to debug JSON issues if generate_json is swallowing errors
-            
+
             # Using generate_json directly
             response = await self.client.generate_json(prompt, temperature=0.0)
-            
+
             # Normalize response to list
             entities = []
             if isinstance(response, list):
@@ -73,7 +74,7 @@ class EntityExtractor:
                         if key in response and isinstance(response[key], list):
                             entities = response[key]
                             break
-            
+
             if not entities:
                 # logger.warning(f"No entities found for {event.title}. Raw: {response}")
                 return
@@ -82,7 +83,7 @@ class EntityExtractor:
             for item in entities:
                 name = item.get("name")
                 role = item.get("role")
-                
+
                 if name and role:
                     # 1. Find or create Person
                     person = PersonNode.find_by_name(name)
@@ -90,12 +91,12 @@ class EntityExtractor:
                         person = PersonNode(name=name)
                         person.save()
                         # logger.info(f"🆕 Created Person: {name}")
-                    
+
                     # 2. Link to Event
                     success = person.save_relationship(event.uuid, role)
                     if success:
                         saved_count += 1
-                        
+
             if saved_count > 0:
                 logger.info(f"🔗 Linked {saved_count} entities for '{event.title}'")
 

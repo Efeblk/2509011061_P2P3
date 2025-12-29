@@ -51,7 +51,9 @@ async def main():
         RETURN count(s) as enriched_summaries
         """
         enriched_count = db_connection.graph.query(query_meta).result_set[0][0]
-        print(f"🎭 Summaries with Source Metadata (Genre/Duration): {enriched_count}/{total} ({enriched_count/total*100:.1f}%)")
+        print(
+            f"🎭 Summaries with Source Metadata (Genre/Duration): {enriched_count}/{total} ({enriched_count/total*100:.1f}%)"
+        )
 
         # 2. Boilerplate / Low Quality Detection
         # Check for summaries that mention "No content" or "No reviews"

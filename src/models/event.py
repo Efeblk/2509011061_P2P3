@@ -242,10 +242,7 @@ class EventNode(Node):
             relationships = []
             if result.result_set:
                 for row in result.result_set:
-                    relationships.append({
-                        "name": row[0],
-                        "role": row[1]
-                    })
+                    relationships.append({"name": row[0], "role": row[1]})
 
             return relationships
 

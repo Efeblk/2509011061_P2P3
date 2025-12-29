@@ -27,15 +27,6 @@ class FalkorDBSettings(BaseSettings):
         return f"redis://{self.host}:{self.port}/{self.db}"
 
 
-class GeminiSettings(BaseSettings):
-    """Google Gemini API configuration."""
-
-    api_key: str = Field(..., alias="GEMINI_API_KEY")
-    model: str = Field(default="gemini-1.5-flash", alias="GEMINI_MODEL")
-
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
-
-
 class OllamaSettings(BaseSettings):
     """Local Ollama configuration."""
 
@@ -70,12 +61,15 @@ class AISettings(BaseSettings):
     enable_embeddings: bool = Field(default=False, alias="AI_ENABLE_EMBEDDINGS")
     concurrency: int = Field(default=8, alias="AI_CONCURRENCY")
 
-    # Provider selection: "gemini" or "ollama"
-    provider: str = Field(default="gemini", alias="AI_LOCAL")
+    # Vector Search Settings
+    embedding_dimension: int = Field(default=1024, alias="AI_EMBEDDING_DIMENSION")
+
+    # Provider selection: "ollama" is now default/only
+    provider: str = Field(default="ollama", alias="AI_LOCAL")
 
     # Models
     model_fast: str = Field(default="llama3.2", alias="AI_MODEL_FAST")
-    model_reasoning: str = Field(default="gemini-3.0-pro", alias="AI_MODEL_REASONING")
+    model_reasoning: str = Field(default="mistral-nemo", alias="AI_MODEL_REASONING")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
@@ -143,7 +137,6 @@ class Settings:
             return
 
         self.falkordb = FalkorDBSettings()
-        self.gemini = GeminiSettings()
         self.ollama = OllamaSettings()
         self.scrapy = ScrapySettings()
         self.ai = AISettings()
@@ -154,7 +147,6 @@ class Settings:
     def reload(self):
         """Reload all settings from environment."""
         self.falkordb = FalkorDBSettings()
-        self.gemini = GeminiSettings()
         self.ollama = OllamaSettings()
         self.scrapy = ScrapySettings()
         self.ai = AISettings()

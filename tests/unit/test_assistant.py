@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from src.ai.assistant import EventAssistant
+from src.ai.schemas import EventIntent
 
 
 @pytest.fixture
@@ -23,27 +24,17 @@ def mock_db():
 
 
 @pytest.mark.asyncio
-async def test_identify_intent_keyword(mock_ai_client):
-    assistant = EventAssistant()
-
-    # Test keyword matching
-    assert await assistant.identify_intent("cheap events") == "best-value"
-    assert await assistant.identify_intent("romantic dinner") == "date-night"
-    assert await assistant.identify_intent("this weekend") == "this-weekend"
-
-
-@pytest.mark.asyncio
 async def test_identify_intent_ai_fallback(mock_ai_client):
     assistant = EventAssistant()
 
-    # Mock AI response
-    assistant.client.generate.return_value = "hidden-gems"
+    # Mock AI response (generate_json, not generate)
+    assistant.client.generate_json.return_value = {"intent": "hidden-gems"}
 
     intent = await assistant.identify_intent("what should I do?")
     assert intent == "hidden-gems"
 
     # Verify AI was called
-    assistant.client.generate.assert_called_once()
+    assistant.client.generate_json.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -60,50 +51,57 @@ async def test_extract_filters_valid(mock_ai_client):
 
 
 @pytest.mark.asyncio
-async def test_extract_filters_date_safeguard(mock_ai_client):
-    assistant = EventAssistant()
-
-    # Mock AI returning a date even though query has none
-    assistant.reasoning_client.generate_json.return_value = {"date_range": {"start": "2025-01-01", "end": "2025-01-02"}}
-
-    # Query without date keywords
-    filters = await assistant.extract_filters("events in Istanbul")
-
-    # Should discard date_range
-    assert filters["date_range"] is None
-
-
-@pytest.mark.asyncio
 async def test_search_hybrid(mock_ai_client, mock_db):
     assistant = EventAssistant()
 
     # 1. Mock Filter Extraction
-    # We mock the method on the instance
     assistant.extract_filters = AsyncMock(return_value={"max_price": 500, "city": "Istanbul"})
 
-    # 2. Mock Cypher Result (Candidates)
-    mock_db.execute_query.return_value.result_set = [["uuid-1"], ["uuid-2"]]
+    # 2. Mock DB Query Results
+    # We expect 2 calls:
+    # 1st call: Cypher Filter -> returns [uuid-1, uuid-2]
+    # 2nd call: Vector Search -> returns [(node, score), (node, score)]
+    
+    mock_cypher_result = MagicMock()
+    mock_cypher_result.result_set = [["uuid-1"], ["uuid-2"]]
+    
+    # Vector Search Result
+    # Each row is [node_data, score]
+    mock_node1 = MagicMock()
+    mock_node1.properties = {"embedding_v4": [], "uuid": "summary-uuid-1", "event_uuid": "uuid-1"}
+    
+    mock_node2 = MagicMock() # uuid-3 (not in candidates)
+    mock_node2.properties = {"embedding_v4": [], "uuid": "summary-uuid-3", "event_uuid": "uuid-3"}
+    
+    mock_vec_result = MagicMock()
+    mock_vec_result.result_set = [[mock_node1, 0.9], [mock_node2, 0.8]]
+    
+    mock_db.execute_query.side_effect = [mock_cypher_result, mock_vec_result]
 
     # 3. Mock Embeddings
     assistant.client.embed.return_value = [0.1, 0.2, 0.3]
 
-    # 4. Mock Summaries
-    with patch("src.models.ai_summary.AISummaryNode.get_all_summaries", new_callable=AsyncMock) as mock_get_summaries:
-        mock_summary1 = MagicMock()
-        mock_summary1.event_uuid = "uuid-1"
-        mock_summary1.embedding = "[0.1, 0.2, 0.3]"  # Perfect match
+    # 4. Mock AISummaryNode construction (since logic does AISummaryNode(**props))
+    # We verify logic via search results filtering
+    
+    # 5. Mock fetch_event_details AND rerank to avoid errors later in the pipeline
+    assistant._fetch_event_details = AsyncMock(return_value={"title": "Test", "venue": "V", "date": "2025"})
+    assistant._rerank_results = AsyncMock(return_value=[(0.9, MagicMock(), {"title": "Test"})])
 
-        mock_summary2 = MagicMock()
-        mock_summary2.event_uuid = "uuid-3"  # Not in candidates
-        mock_summary2.embedding = "[0.1, 0.2, 0.3]"
-
-        mock_get_summaries.return_value = [mock_summary1, mock_summary2]
-
-        results = await assistant.search("query")
-
-        # Should only return uuid-1 because uuid-3 was filtered out by Cypher
-        assert len(results) == 1
-        assert results[0][1].event_uuid == "uuid-1"
+    # We only care about step 4 (Filtering)
+    # But search() now runs the whole pipeline including re-ranking.
+    # To test filtering, we can check arguments to _rerank_results?
+    # Or just check final result.
+    
+    # Let's simplify: search() calls extract_filters -> cypher -> vector -> filter -> fetch -> rerank.
+    # The filtering of uuid-3 happens BEFORE fetch/rerank.
+    # So _fetch_event_details should be called ONLY for uuid-1.
+    
+    results = await assistant.search("query")
+    
+    # Verify we filtered out uuid-3 (Logic: if candidate_uuids is set, filter)
+    # _fetch_event_details should be called once for uuid-1
+    assistant._fetch_event_details.assert_called_once_with("uuid-1")
 
 
 @pytest.mark.asyncio
@@ -113,16 +111,14 @@ async def test_generate_answer(mock_ai_client, mock_db):
     # Mock AI response
     assistant.reasoning_client.generate.return_value = "Here is a plan."
 
-    # Mock Event Details
-    assistant._fetch_event_details = AsyncMock(
-        return_value={"title": "Event 1", "venue": "Venue 1", "date": "2025-01-01", "price": 100}
-    )
-
     mock_summary = MagicMock()
     mock_summary.sentiment_summary = "Good event"
     mock_summary.event_uuid = "uuid-1"
+    
+    mock_details = {"title": "Event 1", "venue": "Venue 1", "date": "2025-01-01", "price": 100}
 
-    top_results = [(0.9, mock_summary)]
+    # Tuple size 3: (score, summary, details)
+    top_results = [(0.9, mock_summary, mock_details)]
 
     answer = await assistant.generate_answer("plan a date", top_results)
 

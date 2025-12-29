@@ -33,10 +33,10 @@ class VenueEnricher:
         # Create new
         logger.info(f"🆕 New venue detected: {venue_name}")
         venue = VenueNode(name=venue_name, city=city)
-        
+
         # Enrich immediately
         await self.enrich_venue(venue)
-        
+
         # Save
         venue.save()
         return venue
@@ -68,12 +68,12 @@ class VenueEnricher:
 
         try:
             response = await self.client.generate_json(prompt, temperature=0.1)
-            
+
             if response:
                 venue.is_outdoors = response.get("is_outdoors", False)
                 venue.vibe = response.get("vibe", "Unknown")
                 venue.capacity = response.get("capacity", 0)
-                
+
                 logger.info(f"✨ Enriched '{venue.name}': Outdoors={venue.is_outdoors}, Vibe={venue.vibe}")
             else:
                 logger.warning(f"Failed to enrich venue: {venue.name}")

@@ -14,6 +14,7 @@ from src.database.connection import db_connection
 from src.models.ai_summary import AISummaryNode
 from src.models.event import EventNode
 from src.ai.schemas import RerankResponse
+
 CATEGORIES = {
     "best-value": "High quality events with great value for money.",
     "date-night": "Romantic, intimate, impressive date spots.",
@@ -72,10 +73,10 @@ class EventAssistant:
                 return None
 
             intent = response.get("intent")
-            
+
             if intent == EventIntent.SEARCH:
                 return None
-            
+
             return intent
 
         except Exception as e:
@@ -100,12 +101,13 @@ class EventAssistant:
         Query: "{query}"
         
         Rules:
-        1. max_price: Extract number if user mentions price/budget.
-        2. city: Extract city name.
-        3. category: Extract event type (e.g. "Jazz", "Theater").
-        4. genre: Extract genre. IMPORTANT: Translate common genres to Turkish if possible (e.g. "Comedy" -> "Komedi", "Stand up" -> "Stand up", "Concert" -> "Konser", "Theater" -> "Tiyatro").
-        5. duration: Extract duration.
-        6. date_range: Calculate start/end dates.
+        1. Typo Correction: Correct obvious spelling mistakes in City, Genre, or Category (e.g. "istanbu" -> "İstanbul", "nigt" -> "Night").
+        2. max_price: Extract number if user mentions price/budget.
+        3. city: Extract city name (Corrected).
+        4. category: Extract event type (e.g. "Jazz", "Theater", "Concert"). DO NOT map moods like "Date Night", "Romantic", "Fun" to category.
+        5. genre: Extract genre. IMPORTANT: Translate common genres to Turkish if possible (e.g. "Comedy" -> "Komedi", "Stand up" -> "Stand up", "Concert" -> "Konser", "Theater" -> "Tiyatro").
+        6. duration: Extract duration.
+        7. date_range: Calculate start/end dates.
         
         Constraints:
         - Only set fields that are EXPLICITLY mentioned in the query.
@@ -113,7 +115,7 @@ class EventAssistant:
         - If a field is not mentioned, it MUST be skipped or null.
 
         Examples:
-        - "Jazz in Istanbul" -> {{"city": "İstanbul", "category": "Caz"}}
+        - "Jazz in Istanbu" -> {{"city": "İstanbul", "category": "Caz"}}
         - "Cheap events" -> {{"max_price": 500}} (implied budget)
         - "Rock concerts under 1000TL" -> {{"category": "Konser", "genre": "Rock", "max_price": 1000}}
         """
@@ -126,17 +128,32 @@ class EventAssistant:
 
             # Clean up None values
             filters = {k: v for k, v in response.items() if v is not None}
-            
+
             # Flatten date_range if present
             if filters.get("date_range"):
                 dr = filters["date_range"]
                 # Pydantic model dump might return dict or object, ensure it's dict
                 if hasattr(dr, "model_dump"):
                     filters["date_range"] = dr.model_dump()
-                
+
                 # Remove if empty
                 if not filters["date_range"].get("start") and not filters["date_range"].get("end"):
                     del filters["date_range"]
+
+            # Filter out known "Moods" incorrectly mapped to Category
+            invalid_categories = [
+                "date night",
+                "romantic",
+                "fun",
+                "best value",
+                "hidden gem",
+                "family",
+                "cheap",
+                "popular",
+            ]
+            if filters.get("category") and filters["category"].lower() in invalid_categories:
+                logger.info(f"Removing invalid category '{filters['category']}' (it's a mood, not a genre)")
+                del filters["category"]
 
             return filters
         except Exception as e:
@@ -151,7 +168,7 @@ class EventAssistant:
         3. Rank candidates via Vector Search.
         """
         logger.info(f"Searching for: {query}")
-        
+
         # 1. Extract Filters
         filters = await self.extract_filters(query)
 
@@ -202,13 +219,13 @@ class EventAssistant:
                     candidate_uuids = set(row[0] for row in res.result_set)
                     logger.info(f"Found {len(candidate_uuids)} candidates matching filters.")
                 else:
-                    logger.warning("No events match the filters.")
-                    return []
+                    logger.warning("No events match the filters. Relaxing constraints and relying on vector search.")
+                    candidate_uuids = None
+
             except Exception as e:
                 logger.error(f"Cypher filter failed: {e}")
-                # Fallback to full search? Or return empty?
-                # Let's return empty to respect constraints
-                return []
+                # Fallback to full search
+                candidate_uuids = None
 
         # 3. Embed Query
         query_vec = self.client.embed(query)
@@ -226,141 +243,117 @@ class EventAssistant:
             # Syntax: CALL db.idx.vector.queryNodes('AISummary', 'embedding', $k, $vec) YIELD node, score
             # We fetch more than needed (20) to allow for re-ranking
             logger.info("Attempting Database Vector Search...")
-            k_neighbors = 20
-            
+            k_neighbors = 100
+
             # Note: We use vecf32() to cast the list to a vector
-            vec_query = "CALL db.idx.vector.queryNodes('AISummary', 'embedding', $k, vecf32($vec)) YIELD node, score RETURN node, score"
-            vec_params = {'k': k_neighbors, 'vec': query_vec}
-            
+            vec_query = "CALL db.idx.vector.queryNodes('AISummary', 'embedding_v4', $k, vecf32($vec)) YIELD node, score RETURN node, score"
+            vec_params = {"k": k_neighbors, "vec": query_vec}
+
             res = db_connection.execute_query(vec_query, vec_params)
-            
+
             if res and res.result_set:
                 logger.info(f"Database Vector Search returned {len(res.result_set)} results.")
                 for row in res.result_set:
-                    node_data = row[0] # Node object or node properties
+                    node_data = row[0]  # Node object or node properties
                     score = row[1]
-                    
+
                     # Parse Node Data
                     summary_node = None
-                    if hasattr(node_data, 'properties'):
+                    if hasattr(node_data, "properties"):
                         # FalkorDB Node object
-                        summary_node = AISummaryNode(**node_data.properties)
+                        props = node_data.properties.copy()
+                        # props.pop('embedding_v3', None)  # No longer needed as class matches DB
+                        summary_node = AISummaryNode(**props)
                         # Fix types if needed (embedding extraction might be string)
                     else:
                         # Assuming dict/map
                         # Only applicable if using older client or weird response
-                        pass # TODO: Robust parsing
-                        
+                        pass  # TODO: Robust parsing
+
                     if summary_node:
                         # Filter by Cypher constraints if strictly required?
-                        # Vector search is approximate. If we have HARD filters (city, date), 
+                        # Vector search is approximate. If we have HARD filters (city, date),
                         # we should intersect candidate_uuids.
-                        if candidate_uuids is not None and summary_node.event_uuid not in candidate_uuids:
-                            continue
-                            
+                        if candidate_uuids is not None:
+                            if summary_node.event_uuid not in candidate_uuids:
+                                # logger.debug(f"Skipping {summary_node.event_uuid} (not in filters)")
+                                continue
+
                         results.append((score, summary_node))
 
             else:
                 logger.warning("Database Vector Search returned empty.")
-        
+
         except Exception as e:
             logger.warning(f"Database Vector Search failed ({e}).")
 
         # Fallback if no results from DB
         if not results:
-            logger.info("Falling back to In-Memory Search.")
-            # --- Fallback: In-Memory Search ---
-            summaries = await AISummaryNode.get_all_summaries(limit=5000)
-            logger.info(f"Fallback: Checking {len(summaries)} summaries...")
-            for s in summaries:
-                # Filter first
-                if candidate_uuids is not None and s.event_uuid not in candidate_uuids:
-                    continue
-                if not s.embedding:
-                    continue
-
-                try:
-                    vec = s.get_embedding_vector()
-                    if not vec: continue
-                    
-                    # Ensure it's not a string
-                    if isinstance(vec, str):
-                         vec = json.loads(vec)
-
-                    # Cosine Similarity
-                    score = np.dot(query_vec, vec) / (np.linalg.norm(query_vec) * np.linalg.norm(vec))
-                    if score > 0.3: # Lower threshold for debug
-                        results.append((score, s))
-                except Exception as ex:
-                    # logger.warning(f"Math error in fallback: {ex}")
-                    continue
-            logger.info(f"Fallback: Found {len(results)} matches.")
-            # ----------------------------------
+            logger.warning("Database Vector Search returned no results. In-memory fallback is DISABLED.")
+            return []
 
         # 5. Sort & Top K
         results.sort(key=lambda x: x[0], reverse=True)
-        top_candidates = results[:20] # Take top 20 for re-ranking
+        top_candidates = results[:20]  # Take top 20 for re-ranking
 
         # 6. Re-ranking (LLM Judge)
         # We verify if the event ACTUALLY matches the user query intent beyond keywords.
         final_results = []
-        
+
         # Determine if re-ranking is needed (optimization: skip for simple queries?)
         # For now, always re-rank to ensure quality.
-        
+
         # Prepare candidates for LLM
         # We need event details for the LLM to judge properly
         candidate_details = []
         for score, s in top_candidates:
             details = await self._fetch_event_details(s.event_uuid)
             if details:
-                candidate_details.append({
-                    "id": s.event_uuid,
-                    "title": details['title'],
-                    "summary": s.sentiment_summary,
-                    "score": score,
-                    "summary_obj": s,
-                    "details_obj": details
-                })
+                candidate_details.append(
+                    {
+                        "id": s.event_uuid,
+                        "title": details["title"],
+                        "summary": s.sentiment_summary,
+                        "score": score,
+                        "summary_obj": s,
+                        "details_obj": details,
+                    }
+                )
 
         if candidate_details:
             logger.info(f"Re-ranking {len(candidate_details)} candidates...")
             reranked = await self._rerank_results(query, candidate_details)
-            
+
             # --- DEDUPLICATION LOGIC ---
             grouped_results = {}
             for score, summary_obj, details_obj in reranked:
-                key = (details_obj['title'], details_obj.get('venue', ''))
-                
+                key = (details_obj["title"], details_obj.get("venue", ""))
+
                 if key not in grouped_results:
                     # New group
                     grouped_results[key] = {
                         "score": score,
                         "summary": summary_obj,
                         "details": details_obj,
-                        "dates": [details_obj.get('date')] if details_obj.get('date') else []
+                        "dates": [details_obj.get("date")] if details_obj.get("date") else [],
                     }
                 else:
                     # Existing group - merge
                     group = grouped_results[key]
-                    group['score'] = max(group['score'], score) # Best score
-                    if details_obj.get('date'):
-                         group['dates'].append(details_obj.get('date'))
-            
+                    group["score"] = max(group["score"], score)  # Best score
+                    if details_obj.get("date"):
+                        group["dates"].append(details_obj.get("date"))
+
             # Flatten back to list
             final_results_with_details = []
             for item in grouped_results.values():
-                d = item['details']
+                d = item["details"]
                 # clean duplicate dates
-                unique_dates = sorted(list(set([x for x in item['dates'] if x])))
-                d['dates'] = unique_dates
-                
-                final_results_with_details.append((
-                    item['score'],
-                    item['summary'],
-                    d
-                ))
-                
+                unique_dates = sorted(list(set([x for x in item["dates"] if x])))
+                d["dates"] = unique_dates
+
+                final_results_with_details.append((item["score"], item["summary"], d))
+
             # Re-sort by score
             final_results_with_details.sort(key=lambda x: x[0], reverse=True)
         else:
@@ -377,13 +370,13 @@ class EventAssistant:
 
         # Fetch details for context
         events_context = []
-        for score, summary, details in top_results[:5]:  # Use top 5 for context, unpack triplet
+        for score, summary, details in top_results[:7]:  # Use top 7 for context, unpack triplet
             if details:
                 # Handle grouped dates if present
-                date_str = details['date']
+                date_str = details["date"]
                 if "dates" in details and len(details["dates"]) > 1:
-                     sorted_dates = sorted(details["dates"])
-                     date_str = f"{sorted_dates[0]} to {sorted_dates[-1]} ({len(sorted_dates)} shows)"
+                    sorted_dates = sorted(details["dates"])
+                    date_str = f"{sorted_dates[0]} to {sorted_dates[-1]} ({len(sorted_dates)} shows)"
 
                 events_context.append(
                     f"- {details['title']} @ {details['venue']} ({date_str}, {details['price']} TL): {summary.sentiment_summary}"
@@ -397,22 +390,29 @@ class EventAssistant:
             history_str = "Conversation History:\n" + "\n".join([f"{role}: {msg}" for role, msg in self.history[-6:]])
 
         prompt = f"""
-        You are a helpful event assistant.
+        You are an expert Event Concierge for Istanbul.
+        Your goal is to provide personalized, high-quality event recommendations.
         
         {history_str}
         
         User Query: "{query}"
         
-        Found Events:
+        AVAILABLE EVENTS (Top Matches):
         {context_str}
         
-        Task: Answer the user's query based on these events. 
-        - Be conversational and helpful.
-        - Recommend specific events from the list.
-        - If the user asked for a plan (e.g. "date night"), propose a plan.
-        - Mention prices and dates where relevant.
-        - Do NOT make up events not in the list.
-        - If the user refers to previous events (e.g. "the first one"), use the history to understand context.
+        RESPONSE WORKFLOW:
+        1. ANALYZE the User Query: Understand the vibe (e.g., "Date Night", "Hidden Gem") and constraints (price, location).
+        2. REVIEW matches: Select the 4-5 best events from the list above.
+        3. SYNTHESIZE: Generate a natural, conversational response.
+        
+        GUIDELINES:
+        - Recommend specific events with their Title, Venue, and Price.
+        - Explain WHY you chose them (link the event features to the user's request).
+        - If the user asked for "Price/Quality", highlight the 'quality_score' or value proposition.
+        - If the user asks for a plan, propose a brief itinerary (e.g. "Start with dinner near X, then go to event Y").
+        - Mention dates in a readable format.
+        - Do NOT helpfully invent events; only use the provided list.
+        - If the list matches poorly, acknowledge it honestly and suggest the closest options.
         """
 
         try:
@@ -496,7 +496,7 @@ class EventAssistant:
         docs = []
         for i, c in enumerate(candidates):
             docs.append(f"ID {i}: {c['title']} - {c['summary']}")
-        
+
         docs_str = "\n".join(docs)
 
         prompt = f"""
@@ -520,37 +520,38 @@ class EventAssistant:
         """
 
         try:
-            # Use reasoning client (Gemini/Mistral)
+            # Use reasoning client
             from src.ai.schemas import RerankResponse
+
             response = await self.reasoning_client.generate_json(prompt, schema=RerankResponse)
-            
+
             if not response or "results" not in response:
                 # Fallback: maintain original order
                 logger.warning("Re-ranking failed format, using original order.")
                 # Convert back to tuple format
-                return [(c['score'], c['summary_obj'], c['details_obj']) for c in candidates]
+                return [(c["score"], c["summary_obj"], c["details_obj"]) for c in candidates]
 
             # Process AI rankings
             final_results = []
-            
+
             # Map ID back to candidate
             # response['results'] is list of {id, score}
-            for res in response['results']:
+            for res in response["results"]:
                 idx = res.get("id")
                 score = res.get("score", 0)
-                if idx is not None and 0 <= idx < len(candidates) and score >= 0.4:
+                if idx is not None and 0 <= idx < len(candidates) and score >= 0.25:
                     cand = candidates[idx]
                     # Update summary/reason if desired, but here we just re-score
-                    final_results.append((score, cand['summary_obj'], cand['details_obj']))
-            
+                    final_results.append((score, cand["summary_obj"], cand["details_obj"]))
+
             # If AI filtered everything (rare), fallback to top 3 original
             if not final_results:
                 logger.warning("Re-ranking filtered all results! Fallback to top 3.")
-                return [(c['score'], c['summary_obj'], c['details_obj']) for c in candidates[:3]]
+                return [(c["score"], c["summary_obj"], c["details_obj"]) for c in candidates[:3]]
 
             return final_results
 
         except Exception as e:
             logger.error(f"Re-ranking error: {e}")
             # Fallback
-            return [(c['score'], c['summary_obj'], c['details_obj']) for c in candidates]
+            return [(c["score"], c["summary_obj"], c["details_obj"]) for c in candidates]

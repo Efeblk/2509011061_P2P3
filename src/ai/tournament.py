@@ -51,8 +51,9 @@ async def run_stage_1_filter(events: List[Dict], criteria: str, dry_run: bool = 
 
     # Use configured AI client (Local or Cloud)
     client = get_ai_client(use_reasoning=False)
-    
+
     from datetime import datetime
+
     today = datetime.now().strftime("%Y-%m-%d %A")
 
     prompt = f"""
@@ -94,7 +95,7 @@ async def run_stage_1_filter(events: List[Dict], criteria: str, dry_run: bool = 
 
 async def run_stage_2_finals(candidates: List[Dict], category_name: str, criteria: str, dry_run: bool = False):
     """
-    Stage 2: Final selection using Reasoning Model (Gemini 3.0 Pro).
+    Stage 2: Final selection using Reasoning Model.
     Input: Shortlisted candidates.
     Output: Top 10 ranked with reasons.
     """
@@ -108,10 +109,11 @@ async def run_stage_2_finals(candidates: List[Dict], category_name: str, criteri
             )
         return mock_results
 
-    # Use Reasoning model (or Local equivalent)
+    # Use Reasoning model
     client = get_ai_client(use_reasoning=True)
-    
+
     from datetime import datetime
+
     today = datetime.now().strftime("%Y-%m-%d %A")
 
     prompt = f"""
@@ -139,12 +141,8 @@ async def run_stage_2_finals(candidates: List[Dict], category_name: str, criteri
     """
 
     try:
-        # Use reasoning model for Stage 2
-        model_override = None
-        if settings.ai.provider == "ollama":
-            model_override = settings.ollama.model_reasoning
-
-        results = await client.generate_json(prompt, temperature=0.4, model=model_override)
+        # Use configured reasoning model
+        results = await client.generate_json(prompt, temperature=0.4, model=settings.ai.model_reasoning)
 
         final_list = extract_list_from_response(results)
 
@@ -167,13 +165,14 @@ async def run_tournament(
 
     # 1. Fetch Candidates (Vector Search Pre-filter)
     from src.database.connection import db_connection
+
     client = get_ai_client()
-    
+
     # Embed the criteria to find semantically relevant events
     # e.g. "Romantic date night" -> Vector
     logger.info(f"Generating embedding for criteria: '{criteria[:50]}...'")
     criteria_vec = client.embed(criteria)
-    
+
     if not criteria_vec:
         logger.error("Failed to generate embedding for criteria. Aborting.")
         return
@@ -181,24 +180,24 @@ async def run_tournament(
     # Default to 50 candidates if no limit specified, or use provided limit
     # We want enough candidates for the LLM to rank, but not too many to burn tokens.
     search_limit = candidate_limit if candidate_limit > 0 else 50
-    
+
     # Vector Search Query
     # We find the top N AISummary nodes that match the criteria embedding
     # Then we fetch the connected Event details
     query = f"""
-    CALL db.idx.vector.queryNodes('AISummary', 'embedding', $limit, vecf32($vec)) YIELD node AS s, score
+    CALL db.idx.vector.queryNodes('AISummary', 'embedding_v4', $limit, vecf32($vec)) YIELD node AS s, score
     MATCH (e:Event)-[:HAS_AI_SUMMARY]->(s)
     RETURN e.uuid, e.title, e.date, s.sentiment_summary, s.importance, s.value_rating, s.quality_score, e.genre, e.duration, score
     """
-    
+
     all_candidates = []
-    
+
     # helper to parse row
     def parse_row(row, score=0.0):
         # row indexes depend on query
         # Vector Query: e.uuid, e.title, e.date, s.sentiment_summary, s.importance, s.value_rating, s.quality_score, e.genre, e.duration, score
         # Fallback Query: e.uuid, e.title, e.date, s.sentiment_summary, s.importance, s.value_rating, s.quality_score, e.genre, e.duration
-        
+
         # We normalize to dict
         return {
             "uuid": row[0],
@@ -209,17 +208,17 @@ async def run_tournament(
             "value": row[5],
             "genre": row[7] or "",
             "duration": row[8] or "",
-            "vector_score": score
+            "vector_score": score,
         }
 
     vector_success = False
-    
+
     try:
         # Pass vector as list (FalkorDB client handles it, or use manual vecf32 literal if needed)
         # Based on verify_rag, we need vecf32($vec) in Cypher and pass list in params
         params = {"limit": search_limit, "vec": criteria_vec}
         res = db_connection.execute_query(query, params)
-        
+
         if res and res.result_set:
             vector_success = True
             for row in res.result_set:
@@ -229,7 +228,7 @@ async def run_tournament(
                     continue
                 all_candidates.append(parse_row(row, score=row[9]))
         else:
-             logger.warning("Vector search returned 0 results. Triggering fallback.")
+            logger.warning("Vector search returned 0 results. Triggering fallback.")
 
     except Exception as e:
         logger.warning(f"Vector search failed ({e}). Falling back to full scan.")
@@ -255,7 +254,7 @@ async def run_tournament(
                     all_candidates.append(parse_row(row, score=0.0))
                 logger.info(f"Fallback: Found {len(all_candidates)} candidates.")
         except Exception as e:
-             logger.error(f"Fallback failed: {e}")
+            logger.error(f"Fallback failed: {e}")
 
     logger.info(f"Found {len(all_candidates)} eligible candidates total.")
 

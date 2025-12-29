@@ -46,13 +46,13 @@ class AISummaryNode(Node):
     bucket_list_worthy: bool = False
 
     # Embedding for similarity search
-    embedding: Optional[List[float]] = None  # Native Vector storage
+    embedding_v4: Optional[List[float]] = None  # Native Vector storage (v4 for fix)
 
     # Full summary JSON (backup)
     summary_json: Optional[str] = None  # Complete AI response
 
     # Metadata
-    model_version: str = "gemini-1.5-flash"  # AI model used
+    model_version: str = "llama3.2"  # AI model used
     prompt_version: str = "v1"  # Prompt template version
     created_at: datetime = None
     updated_at: datetime = None
@@ -86,7 +86,7 @@ class AISummaryNode(Node):
             "educational_value": self.educational_value,
             "tourist_attraction": self.tourist_attraction,
             "bucket_list_worthy": self.bucket_list_worthy,
-            "embedding": self.embedding,
+            "embedding_v4": self.embedding_v4,
             "summary_json": self.summary_json,
             "model_version": self.model_version,
             "prompt_version": self.prompt_version,
@@ -114,7 +114,7 @@ class AISummaryNode(Node):
 
     def get_embedding_vector(self) -> Optional[List[float]]:
         """Return embedding vector (ALREADY A LIST)."""
-        return self.embedding
+        return self.embedding_v4
 
     def to_compact_dict(self) -> dict:
         """
@@ -154,13 +154,30 @@ class AISummaryNode(Node):
             self.updated_at = datetime.utcnow()
             properties = self._get_properties()
 
+            # Separate embedding to store as Vector (vecf32)
+            embedding_val = properties.pop("embedding_v4", None)
+
             # Build Cypher query for MERGE (create or update)
+            # Use SET s += to update properties without wiping existing ones if strictly needed,
+            # but here we want to enforce schema, so SET s = might be okay.
+            # However, separating embedding means SET s = {...} might REMOVE embedding if we use =.
+            # So we should include embedding in the map OR update logic.
+            # Pattern: SET s = map (without vector), SET s.vec = vecf32($vec)
+
             props_str = ", ".join([f"{k}: ${k}" for k in properties.keys()])
+
             query = f"""
             MERGE (s:AISummary {{uuid: $uuid}})
             SET s = {{{props_str}}}
+            """
+
+            if embedding_val is not None:
+                query += " SET s.embedding_v4 = vecf32($embedding_vec) "
+                properties["embedding_vec"] = embedding_val
+
+            query += """
             WITH s
-            MATCH (e:Event {{uuid: $event_uuid}})
+            MATCH (e:Event {uuid: $event_uuid})
             MERGE (e)-[:HAS_AI_SUMMARY]->(s)
             RETURN s
             """
@@ -214,7 +231,7 @@ class AISummaryNode(Node):
                     educational_value=node_data.properties.get("educational_value", False),
                     tourist_attraction=node_data.properties.get("tourist_attraction", False),
                     bucket_list_worthy=node_data.properties.get("bucket_list_worthy", False),
-                    embedding=node_data.properties.get("embedding"),
+                    embedding_v4=node_data.properties.get("embedding_v4"),
                     summary_json=node_data.properties.get("summary_json"),
                     model_version=node_data.properties.get("model_version", "gemini-1.5-flash"),
                     prompt_version=node_data.properties.get("prompt_version", "v1"),
@@ -232,23 +249,29 @@ class AISummaryNode(Node):
 
             return None
 
-            return None
-
         except Exception as e:
             print(f"Error getting AI summary: {e}")
             return None
 
     @staticmethod
-    def create_vector_index(dimension: int):
+    def create_vector_index(dimension: Optional[int] = None):
         """Create vector index on AISummary nodes."""
+        from config.settings import settings
+
+        if dimension is None:
+            dimension = settings.ai.embedding_dimension
+
         try:
             # Native Cypher syntax for FalkorDB >= 1.0
-            query = f"CREATE VECTOR INDEX FOR (s:AISummary) ON (s.embedding) OPTIONS {{dimension: {dimension}, similarityFunction: 'cosine'}}"
+            query = f"CREATE VECTOR INDEX FOR (s:AISummary) ON (s.embedding_v4) OPTIONS {{dimension: {dimension}, similarityFunction: 'cosine'}}"
             db_connection.graph.query(query)
             print(f"Vector index created with dimension {dimension}.")
         except Exception as e:
-            # Ignore if already exists
-            print(f"Index creation note: {e}")
+            # Check if index already exists
+            if "already indexed" in str(e):
+                print(f"Vector index already exists (dim={dimension}).")
+            else:
+                print(f"Error creating vector index: {e}")
 
     @staticmethod
     async def get_all_summaries(limit: int = 100) -> list["AISummaryNode"]:
@@ -292,7 +315,7 @@ class AISummaryNode(Node):
                             educational_value=node_data.properties.get("educational_value", False),
                             tourist_attraction=node_data.properties.get("tourist_attraction", False),
                             bucket_list_worthy=node_data.properties.get("bucket_list_worthy", False),
-                            embedding=node_data.properties.get("embedding"),
+                            embedding_v4=node_data.properties.get("embedding_v4"),
                             summary_json=node_data.properties.get("summary_json"),
                             model_version=node_data.properties.get("model_version", "gemini-1.5-flash"),
                             prompt_version=node_data.properties.get("prompt_version", "v1"),

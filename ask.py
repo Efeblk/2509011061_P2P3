@@ -47,7 +47,7 @@ def display_event_card(event: dict, score: float = None, reason: str = None):
     venue = event.get("venue") or "Unknown Venue"
     city = event.get("city") or "Unknown City"
     date = event.get("date") or "Unknown Date"
-    
+
     # Handle grouped dates
     if "dates" in event and event["dates"]:
         dates = sorted(event["dates"])
@@ -71,7 +71,7 @@ def display_event_card(event: dict, score: float = None, reason: str = None):
 
     # Meta info line
     meta = f"📍 {city}  🏠 {venue}  🗓️  {date}  💰 {price_str}"
-    
+
     # Sub-meta line
     sub_meta = f"🎭 {genre}"
     if duration:
@@ -84,10 +84,10 @@ def display_event_card(event: dict, score: float = None, reason: str = None):
         content.append(f"\n[italic cyan]🏆 {reason}[/italic cyan]")
 
     if event.get("summary"):
-        summary_text = event['summary']
+        summary_text = event["summary"]
         # Deduplicate if reason is same as summary
         if not reason or (reason and summary_text not in reason and reason not in summary_text):
-             content.append(f"\n[dim]{summary_text[:300]}...[/dim]")
+            content.append(f"\n[dim]{summary_text[:300]}...[/dim]")
 
     # Footer (Score)
     footer = None
@@ -163,9 +163,9 @@ async def main():
                     if results:
                         console.print("\n[bold white]📚 Source Events:[/bold white]")
                         for score, summary, details in results[:5]:
-                             # Inject AI summary text (using sentiment_summary for brevity)
-                             details["summary"] = summary.sentiment_summary
-                             display_event_card(details, score=score)
+                            # Inject AI summary text (using sentiment_summary for brevity)
+                            details["summary"] = summary.sentiment_summary
+                            display_event_card(details, score=score)
                     else:
                         console.print("[dim]No specific events found directly matching criteria.[/dim]")
 

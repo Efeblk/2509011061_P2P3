@@ -5,8 +5,7 @@ from typing import Optional
 from loguru import logger
 from config.settings import settings
 
-from src.ai.gemini_client import gemini_client
-from src.ai.ollama_client import ollama_client
+from src.ai.ollama_client import ollama_client, OllamaClient
 from src.models.event import EventNode
 from src.models.ai_summary import AISummaryNode
 from src.database.connection import db_connection
@@ -14,17 +13,10 @@ from src.database.connection import db_connection
 
 def get_ai_client(use_reasoning: bool = False):
     """Factory to get the configured AI client."""
-    # If provider is Ollama, use it for everything (including reasoning)
-    if settings.ai.provider == "ollama":
-        return ollama_client
-
-    # Reasoning uses Gemini (if not local)
+    # Always use Ollama
     if use_reasoning:
-        from src.ai.gemini_client import GeminiClient
-
-        return GeminiClient(model_name=settings.ai.model_reasoning)
-
-    return gemini_client
+        return OllamaClient(model_name=settings.ai.model_reasoning)
+    return ollama_client
 
 
 SUMMARY_PROMPT_TEMPLATE = """
@@ -159,7 +151,7 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
                 if role not in people_map:
                     people_map[role] = []
                 people_map[role].append(name)
-            
+
             key_people_section = "KEY PEOPLE (Verified):\n"
             for role, names in people_map.items():
                 key_people_section += f"{role}: {', '.join(names)}\n"
@@ -208,7 +200,8 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
             quality_score=summary_data.get("quality_score"),
             importance=summary_data.get("importance"),
             value_rating=summary_data.get("value_rating"),
-            sentiment_summary=summary_data.get("sentiment_summary") or ("Event details available for search." if skipped_llm else None),
+            sentiment_summary=summary_data.get("sentiment_summary")
+            or ("Event details available for search." if skipped_llm else None),
             key_highlights=json.dumps(summary_data.get("key_highlights") or []),
             concerns=json.dumps(summary_data.get("concerns") or []),
             best_for=",".join(summary_data.get("best_for") or []),
@@ -217,9 +210,9 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
             educational_value=summary_data.get("educational_value", False),
             tourist_attraction=summary_data.get("tourist_attraction", False),
             bucket_list_worthy=summary_data.get("bucket_list_worthy", False),
-            embedding=embedding_json,
+            embedding_v4=json.loads(embedding_json) if embedding_json else None,
             summary_json=json.dumps(summary_data) if summary_data else None,
-            model_version="gemini-1.5-flash",
+            model_version=settings.ollama.model,
             prompt_version="v1",
         )
 

@@ -174,6 +174,17 @@ class FalkorDBConnection:
             # Index on Tag nodes
             self.execute_query("CREATE INDEX FOR (t:Tag) ON (t.name)")
 
+            # Vector Index for AI Summary (Configurable Dimension)
+            # This ensures permanence after fclean/reinstall
+            dim = settings.ai.embedding_dimension
+            vec_query = f"CREATE VECTOR INDEX FOR (s:AISummary) ON (s.embedding_v4) OPTIONS {{dimension: {dim}, similarityFunction: 'cosine'}}"
+            try:
+                self.execute_query(vec_query)
+                logger.info(f"Vector Index created (dim={dim})")
+            except Exception as ve:
+                if "already indexed" not in str(ve):
+                    logger.warning(f"Vector Index creation note: {ve}")
+
             logger.info("Database indexes created successfully")
 
         except Exception as e:

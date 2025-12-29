@@ -5,6 +5,7 @@ Biletinial spider for scraping events from biletinial.com
 import asyncio
 import uuid
 import scrapy
+
 # print("MODULE LOAD: BILETINIAL SPIDER V2 LOADED!!!!!!!!!!!!!")
 # import asynciorapy
 import re
@@ -30,25 +31,25 @@ class BiletinialSpider(BaseEventSpider):
         self.playwright_page = None
         self.limit = int(limit) if limit else None
 
-        # All categories from docs/scraped_websites.md
+        # All categories from docs/scraped_websites.md - REMOVED /istanbul suffix
         self.start_urls = [
-            "https://biletinial.com/tr-tr/muzik/istanbul",
-            "https://biletinial.com/tr-tr/tiyatro/istanbul",
-            "https://biletinial.com/tr-tr/sinema/istanbul",
-            "https://biletinial.com/tr-tr/opera-bale/istanbul",
-            "https://biletinial.com/tr-tr/gosteri/istanbul",
-            "https://biletinial.com/tr-tr/egitim/istanbul",
-            "https://biletinial.com/tr-tr/seminer/istanbul",
-            "https://biletinial.com/tr-tr/etkinlik/istanbul",
-            "https://biletinial.com/tr-tr/eglence/istanbul",
-            "https://biletinial.com/tr-tr/etkinlikleri/stand-up",  # Note: Istanbul filter applied dynamically if possible, or global
+            "https://biletinial.com/tr-tr/muzik",
+            "https://biletinial.com/tr-tr/tiyatro",
+            "https://biletinial.com/tr-tr/sinema",
+            "https://biletinial.com/tr-tr/opera-bale",
+            "https://biletinial.com/tr-tr/gosteri",
+            "https://biletinial.com/tr-tr/egitim",
+            "https://biletinial.com/tr-tr/seminer",
+            "https://biletinial.com/tr-tr/etkinlik",
+            "https://biletinial.com/tr-tr/eglence",
+            "https://biletinial.com/tr-tr/etkinlikleri/stand-up",
             "https://biletinial.com/tr-tr/etkinlikleri/senfoni-etkinlikleri",
-            "https://biletinial.com/tr-tr/spor/istanbul",
+            "https://biletinial.com/tr-tr/spor",
         ]
 
         # Allow overriding start_urls for testing specific pages
-        if kwargs.get('start_url'):
-            self.start_urls = [kwargs.get('start_url')]
+        if kwargs.get("start_url"):
+            self.start_urls = [kwargs.get("start_url")]
             self.logger.info(f"🐞 DEBUG MODE: Overriding start_urls to {self.start_urls}")
 
     custom_settings = {
@@ -92,15 +93,13 @@ class BiletinialSpider(BaseEventSpider):
         """Parse the main events listing page."""
         page = response.meta["playwright_page"]
 
-
-
         # USE wait_for_selector to ensure we don't miss it due to loading lag
         detail_container = None
         try:
             # Wait up to 5s for any detail indicator
             detail_container = await page.wait_for_selector(
-                ".movie-detail-content, .yds_cinema_movie_thread, .yds_cinema_movie_thread_info, .event-detail-content", 
-                timeout=5000
+                ".movie-detail-content, .yds_cinema_movie_thread, .yds_cinema_movie_thread_info, .event-detail-content",
+                timeout=5000,
             )
         except Exception:
             pass
@@ -112,37 +111,38 @@ class BiletinialSpider(BaseEventSpider):
             return
 
         # Check if we need to select a city (for category pages like concerts)
+        # DISABLE ISTANBUL SELECTION FOR TURKEY-WIDE SCRAPING
         # Look for city selector dropdown
-        try:
-            # Try the concerts page city selector first
-            city_selector = page.locator("select#citySelect, select.customSelect").first
-            is_selector_visible = await city_selector.is_visible(timeout=3000)
-
-            if is_selector_visible:
-                self.logger.info("🔍 Found city selector, selecting İstanbul...")
-
-                # Select Istanbul from dropdown (value="147" for İstanbul Tümü)
-                await city_selector.select_option(value="147")
-                self.logger.info("✓ Selected İstanbul from city selector")
-
-                # Wait for the filter to apply (JavaScript onchange event)
-                await asyncio.sleep(5)
-            else:
-                # Try the modal-based city selector (yhm_select_city)
-                modal_selector = page.locator("select.yhm_select_city, select[name='city']").first
-                is_modal_visible = await modal_selector.is_visible(timeout=2000)
-
-                if is_modal_visible:
-                    self.logger.info("🔍 Found modal city selector, selecting İstanbul...")
-                    await modal_selector.select_option(value="istanbul")
-
-                    save_button = page.locator("button.yhm_save").first
-                    if await save_button.is_visible(timeout=2000):
-                        await save_button.click()
-                        self.logger.info("✓ Clicked save button")
-                        await asyncio.sleep(5)
-        except Exception as e:
-            self.logger.info(f"No city selector found (page may already be city-specific): {e}")
+        # try:
+        #     # Try the concerts page city selector first
+        #     city_selector = page.locator("select#citySelect, select.customSelect").first
+        #     is_selector_visible = await city_selector.is_visible(timeout=3000)
+        #
+        #     if is_selector_visible:
+        #         self.logger.info("🔍 Found city selector, selecting İstanbul...")
+        #
+        #         # Select Istanbul from dropdown (value="147" for İstanbul Tümü)
+        #         await city_selector.select_option(value="147")
+        #         self.logger.info("✓ Selected İstanbul from city selector")
+        #
+        #         # Wait for the filter to apply (JavaScript onchange event)
+        #         await asyncio.sleep(5)
+        #     else:
+        #         # Try the modal-based city selector (yhm_select_city)
+        #         modal_selector = page.locator("select.yhm_select_city, select[name='city']").first
+        #         is_modal_visible = await modal_selector.is_visible(timeout=2000)
+        #
+        #         if is_modal_visible:
+        #             self.logger.info("🔍 Found modal city selector, selecting İstanbul...")
+        #             await modal_selector.select_option(value="istanbul")
+        #
+        #             save_button = page.locator("button.yhm_save").first
+        #             if await save_button.is_visible(timeout=2000):
+        #                 await save_button.click()
+        #                 self.logger.info("✓ Clicked save button")
+        #                 await asyncio.sleep(5)
+        # except Exception as e:
+        #     self.logger.info(f"No city selector found (page may already be city-specific): {e}")
 
         # Wait for event list to load (different selectors for different page types)
         event_list_selector = None
@@ -167,9 +167,9 @@ class BiletinialSpider(BaseEventSpider):
                     pass
 
         if not event_list_selector:
-             self.logger.warning("Simplified fallback: No events found")
-             await page.close()
-             return
+            self.logger.warning("Simplified fallback: No events found")
+            await page.close()
+            return
 
         # Wait a bit for dynamic content
         await asyncio.sleep(2)
@@ -190,16 +190,17 @@ class BiletinialSpider(BaseEventSpider):
                     self.logger.info(f"✓ Limit reached ({self.limit} events), stopping 'Load More' clicks.")
                     break
 
-
                 # Look for the load more button
-                load_more_button = page.locator("a.btn.btn-block.btn-primary.btn-lg.btn-load-more, .daha-fazla-yukle, a:has-text('Daha Fazla')").first
+                load_more_button = page.locator(
+                    "a.btn.btn-block.btn-primary.btn-lg.btn-load-more, .daha-fazla-yukle, a:has-text('Daha Fazla')"
+                ).first
                 if await load_more_button.is_visible(timeout=2000):
                     await load_more_button.click()
                     await asyncio.sleep(2)
                     clicks += 1
                 else:
-                     self.logger.info("✓ No 'Load More' button found.")
-                     break
+                    self.logger.info("✓ No 'Load More' button found.")
+                    break
             except Exception as e:
                 self.logger.info(f"✓ Error during load more loop: {e}")
                 break
@@ -258,14 +259,14 @@ class BiletinialSpider(BaseEventSpider):
                             # 1. Full Description
                             # 2. Structured Entities (Writer, Director, Cast)
                             # 3. User Reviews
-            
+
                             # Pass all known data (date, price, etc.) to the detail parser
                             meta = {
                                 "title": title,
                                 "venue": venue,
                                 "city": city,
                                 "date_string": date_string,  # might be None
-                                "price": None,   # Price not visible on listing page
+                                "price": None,  # Price not visible on listing page
                                 "url": url,
                                 "image_url": image_url,
                                 "event_type": event_type,
@@ -279,13 +280,13 @@ class BiletinialSpider(BaseEventSpider):
                                     "timeout": 60000,
                                 },
                             }
-                            
+
                             yield scrapy.Request(
-                                url, 
-                                callback=self.parse_event_detail, 
+                                url,
+                                callback=self.parse_event_detail,
                                 meta=meta,
-                                dont_filter=True, # Allow re-visiting if needed
-                                errback=self.errback_close_page
+                                dont_filter=True,  # Allow re-visiting if needed
+                                errback=self.errback_close_page,
                             )
                             events_yielded += 1
                         else:
@@ -297,7 +298,7 @@ class BiletinialSpider(BaseEventSpider):
                                 event_item = EventItem(
                                     title=self.clean_text(title),
                                     venue=self.clean_text(venue) if venue else None,
-                                    city=self.clean_text(city) if city else "İstanbul",
+                                    city=self.clean_text(city) if city else None,
                                     date=individual_date,
                                     price=None,
                                     url=url,
@@ -352,7 +353,7 @@ class BiletinialSpider(BaseEventSpider):
             # Wait for page to load
             await page.wait_for_load_state("domcontentloaded")
             await asyncio.sleep(2)  # Wait for dynamic content
-            
+
             # Initialize metadata variables
             refined_category = None
             genre = None
@@ -376,7 +377,9 @@ class BiletinialSpider(BaseEventSpider):
             # 2. Extract Genre (Etkinlik Türü)
             try:
                 # Look for strong tag with "Etkinlik Türü" and get following span
-                genre_el = await page.query_selector('.yds_cinema_movie_thread_detail li strong:has-text("Etkinlik Türü") + span')
+                genre_el = await page.query_selector(
+                    '.yds_cinema_movie_thread_detail li strong:has-text("Etkinlik Türü") + span'
+                )
                 if genre_el:
                     genre = await genre_el.inner_text()
                     if genre:
@@ -396,7 +399,7 @@ class BiletinialSpider(BaseEventSpider):
             except Exception as e:
                 self.logger.debug(f"Duration extraction failed: {e}")
             # -------------------------------
-            
+
             is_sold_out = False
             final_price = None
 
@@ -473,7 +476,7 @@ class BiletinialSpider(BaseEventSpider):
                         prices = []
 
                         if "prices" in data and isinstance(data["prices"], list):
-                            self.logger.info(f"DEBUG: Found 'prices' list in JSON: {len(data['prices'])} items")
+                            self.logger.info(f"debug: Found 'prices' list in JSON: {len(data['prices'])} items")
                             extracted_category_prices = []
                             for p_item in data["prices"]:
                                 # p_item example: {"name": "1. Kategori", "price": "₺1.200,00", ...}
@@ -507,6 +510,58 @@ class BiletinialSpider(BaseEventSpider):
                                 response.meta["category_prices"] = extracted_category_prices
                         else:
                             self.logger.info("DEBUG: 'prices' list NOT found in JSON")
+
+                        # Extract Venue and City from JSON if available
+                        if "venue_name" in data and data["venue_name"]:
+                            json_venue_full = data["venue_name"]
+                            self.logger.info(f"✓ Found venue info in JSON: '{json_venue_full}'")
+
+                            # Usually format is "Venue Name, City Name" or just "Venue Name"
+                            # We update the meta only if we don't have good data yet
+                            # But JSON is likely higher quality than listing page scraping, so let's use it
+                            parts = [p.strip() for p in json_venue_full.rsplit(",", 1)]
+
+                            json_venue = parts[0]
+                            json_city = parts[1] if len(parts) > 1 else None
+
+                            # Heuristic: verify if the second part is actually a city
+                            known_cities = [
+                                "İstanbul",
+                                "Ankara",
+                                "İzmir",
+                                "Antalya",
+                                "Bursa",
+                                "Eskişehir",
+                                "Muğla",
+                                "Adana",
+                                "Mersin",
+                            ]
+                            if json_city and not any(c in json_city for c in known_cities):
+                                # Maybe format was "Venue Name, Something Else"
+                                # Look for city in the whole string
+                                found = False
+                                for c in known_cities:
+                                    if c in json_venue_full:
+                                        json_city = c
+                                        # Remove city from venue name if it's at the end
+                                        if json_venue_full.endswith(c) or json_venue_full.endswith(f", {c}"):
+                                            json_venue = (
+                                                json_venue_full.replace(f", {c}", "").replace(c, "").strip().strip(",")
+                                            )
+                                        found = True
+                                        break
+                                if not found:
+                                    # Default assumption
+                                    pass
+
+                            if json_venue:
+                                venue = json_venue
+                                # Update local variables and meta
+                                self.logger.info(f"Updated Venue from JSON: {venue}")
+
+                            if json_city:
+                                city = json_city
+                                self.logger.info(f"Updated City from JSON: {city}")
 
                         # Fallback logic for single price extraction (existing logic)
                         values = []
@@ -620,7 +675,6 @@ class BiletinialSpider(BaseEventSpider):
             rating = response.meta.get("rating")
             rating_count = response.meta.get("rating_count")
 
-
             self.logger.info("DEBUG: Starting Date Extraction")
             # Only extract date if not already provided from listing
             if not event_date or not event_date.strip():
@@ -716,40 +770,133 @@ class BiletinialSpider(BaseEventSpider):
             # Get metadata from the request
             title = response.meta.get("title")
             if not title:
-                 try:
-                     title = self.extract_title(await page.query_selector("body"))
-                     if title:
-                         title = self.clean_text(title)
-                 except:
-                     pass
+                try:
+                    title = self.extract_title(await page.query_selector("body"))
+                    if title:
+                        title = self.clean_text(title)
+                except:
+                    pass
             if not title:
-                 title = "Unknown Title"
+                title = "Unknown Title"
             venue = response.meta.get("venue")
-            city = response.meta.get("city", "İstanbul")
+            city = response.meta.get("city")
             url = response.meta.get("url")
             image_url = response.meta.get("image_url")
             event_type = response.meta.get("event_type", "Etkinlik")
 
-            if event_date:
-                self.logger.info(f"✓ Found date for '{title}': {event_date}")
+            # Extract shared data (Description & Entities) ONCE for all variants
+            self.logger.info("DEBUG: Starting Entity Extraction (Global)")
+            description = await self.extract_description(page)
+            entities = await self.extract_entities(page)
 
-                # Parse date range into individual dates (in case there's a range)
+            # Yield events
+            # TWO MODES:
+            # 1. Tour Page (Multiple cities/dates in div[data-sehir] containers)
+            # 2. Single Page (Global date/venue)
+
+            # Check for Tour Page Containers
+            tour_containers = await page.query_selector_all("div[data-sehir]")
+
+            if tour_containers:
+                self.logger.info(f"✓ Detected Tour Layout with {len(tour_containers)} city blocks")
+
+                # Iterate over each city block
+                for container in tour_containers:
+                    # Extract City
+                    city_val = await container.get_attribute("data-sehir")
+                    if not city_val:
+                        city_val = response.meta.get("city")  # Fallback
+
+                    # Clean city (e.g. "İstanbul Avrupa" -> "İstanbul")
+                    city_clean = self.clean_text(city_val)
+                    if city_clean:
+                        # Heuristic: Remove "Avrupa", "Anadolu", etc. if desired, or keep specific
+                        pass
+
+                    # Find all event rows in this city block
+                    event_rows = await container.query_selector_all(".ed-biletler__sehir__gun")
+
+                    for row in event_rows:
+                        try:
+                            # Extract Date
+                            # <time datetime="..." class="ed-biletler__sehir__gun__tarih">
+                            date_el = await row.query_selector(".ed-biletler__sehir__gun__tarih")
+                            row_date = await date_el.text_content() if date_el else None
+
+                            # Extract Venue
+                            # <a itemprop="location" title="Venue Name">
+                            venue_el = await row.query_selector('a[itemprop="location"]')
+                            row_venue = await venue_el.get_attribute("title") if venue_el else None
+
+                            if not row_venue and venue_el:
+                                # Fallback to text content
+                                row_venue = await venue_el.text_content()
+
+                            # Extract Price (specific to this row if available)
+                            # <div class="ed-biletler__sehir__gun__fiyat">
+                            price_el = await row.query_selector(".ed-biletler__sehir__gun__fiyat")
+                            row_price = None
+                            if price_el:
+                                p_text = await price_el.text_content()
+                                # Parse price logic (reuse or simplify)
+                                if p_text:
+                                    cleaned = (
+                                        p_text.replace(".", "")
+                                        .replace(",", ".")
+                                        .replace("TL", "")
+                                        .replace("₺", "")
+                                        .strip()
+                                    )
+                                    import re
+
+                                    match = re.search(r"(\d+(?:\.\d+)?)", cleaned)
+                                    if match:
+                                        row_price = float(match.group(1))
+
+                            # Create Event Item
+                            event_item = EventItem(
+                                title=self.clean_text(title),
+                                venue=self.clean_text(row_venue) if row_venue else self.clean_text(venue),
+                                city=self.clean_text(city_clean),
+                                date=self.clean_text(row_date),
+                                price=row_price if row_price else final_price,
+                                description=description,
+                                extracted_entities=entities,
+                                price_range=response.meta.get("price_range"),
+                                category_prices=response.meta.get("category_prices"),
+                                url=response.url,
+                                image_url=image_url,
+                                category=refined_category if refined_category else event_type,
+                                genre=genre,
+                                duration=duration,
+                                source="biletinial",
+                                rating=rating,
+                                rating_count=rating_count,
+                                reviews=reviews,
+                                uuid=str(uuid.uuid4()),  # New UUID for each tour date
+                                is_update_job=response.meta.get("is_update_job", False),
+                            )
+                            self.log_event(event_item)
+                            yield event_item
+
+                        except Exception as e:
+                            self.logger.warning(f"Error parsing tour row: {e}")
+                            continue
+
+            # Fallback to Single Page Logic (if no tour containers OR if explicit single date found)
+            elif event_date:
+                self.logger.info(f"✓ Found standard date for '{title}': {event_date}")
+
+                # Parse date range into individual dates
                 individual_dates = parse_turkish_date_range(event_date)
-
-                # EXTRACT SHARED DATA ONCE
-                self.logger.info("DEBUG: Starting Entity Extraction (Date Found path)")
-                # Extract description and entities here so they are ready for all date variants
-                description = await self.extract_description(page)
-                entities = await self.extract_entities(page)
 
                 # Yield event for each date
                 for individual_date in individual_dates:
                     event_item = EventItem(
                         title=self.clean_text(title),
                         venue=self.clean_text(venue) if venue else None,
-                        city=self.clean_text(city) if city else "İstanbul",
+                        city=self.clean_text(city) if city else None,
                         date=individual_date,
-
                         price=final_price,
                         description=description,  # Use pre-extracted description
                         extracted_entities=entities,  # Use pre-extracted entities
@@ -765,7 +912,7 @@ class BiletinialSpider(BaseEventSpider):
                         rating=rating,
                         rating_count=rating_count,
                         reviews=reviews,
-                        uuid=response.meta.get("uuid") or str(uuid.uuid4()),  # Generate UUID if new event
+                        uuid=response.meta.get("uuid") or str(uuid.uuid4()),
                         is_update_job=response.meta.get("is_update_job", False),
                     )
 
@@ -777,15 +924,11 @@ class BiletinialSpider(BaseEventSpider):
                 event_item = EventItem(
                     title=self.clean_text(title),
                     venue=self.clean_text(venue) if venue else None,
-                    city=self.clean_text(city) if city else "İstanbul",
+                    city=self.clean_text(city) if city else None,
                     date=None,
-                    price=final_price,  # UPDATED
-                    description=await self.extract_description(page),  # Extract description
-                    # DEBUG LOG
-                    # self.logger.info("DEBUG: Starting Entity Extraction (Fallback path)") 
-                    # Can't easily insert statement inside dict construction.
-                    # I'll just rely on extract_entities internal logging.
-                    extracted_entities=await self.extract_entities(page),  # Extract structured entities
+                    price=final_price,
+                    description=description,
+                    extracted_entities=entities,
                     url=url,
                     image_url=image_url,
                     category=refined_category if refined_category else event_type,
@@ -802,7 +945,7 @@ class BiletinialSpider(BaseEventSpider):
             event_item = EventItem(
                 title=self.clean_text(response.meta.get("title")),
                 venue=self.clean_text(response.meta.get("venue")) if response.meta.get("venue") else None,
-                city=response.meta.get("city", "İstanbul"),
+                city=response.meta.get("city"),
                 date=None,
                 price=None,  # Failed defaults to None
                 url=response.meta.get("url"),
@@ -846,9 +989,12 @@ class BiletinialSpider(BaseEventSpider):
             return venue_text
 
         # Try kategori__etkinlikler layout: address
-        venue = element.css("address::text").get()
-        if venue and venue.strip():
-            return venue.strip()
+        # Use ::text to get direct text, but address might contain img
+        address_parts = element.css("address::text").getall()
+        if address_parts:
+            venue = " ".join([p.strip() for p in address_parts if p.strip()])
+            if venue:
+                return venue
 
         # Try concert/category layout: p.loca
         venue = element.css("p.loca::text").get()
@@ -859,9 +1005,22 @@ class BiletinialSpider(BaseEventSpider):
 
     def extract_city(self, element):
         """Extract city name from element."""
-        # For now, we know it's Istanbul from the URL
-        # Could be extracted from venue/address if needed
-        return "İstanbul"
+        # Try to extract city from address or specific badges
+        # Look for city in address structure
+
+        # 1. Try address container
+        address = element.css("div.sehir-detay__liste__alt__adres::text").getall()
+        if address:
+            # Often "Venue Name - City" or just "Venue Name"
+            # This is hard to parse reliably without structure, but we can try
+            full_address = " ".join([a.strip() for a in address if a.strip()])
+            # Heuristic: Known major cities
+            cities = ["İstanbul", "Ankara", "İzmir", "Antalya", "Bursa", "Eskişehir"]
+            for c in cities:
+                if c in full_address:
+                    return c
+
+        return None
 
     def extract_date(self, element):
         """Extract event date from element."""
@@ -1122,9 +1281,9 @@ class BiletinialSpider(BaseEventSpider):
             # The description is contained in .yds_cinema_movie_thread_info
             # We extract the full text of the container to ensure we capture all metadata
             # (Yazar, Yönetmen, Oyuncular, etc.) which might be in p tags or other elements.
-            
+
             element = await page.query_selector(".yds_cinema_movie_thread_info")
-            
+
             if element:
                 text = await element.inner_text()
                 if text and len(text.strip()) > 20:
@@ -1137,7 +1296,7 @@ class BiletinialSpider(BaseEventSpider):
                 "#event-content",
                 "div[itemprop='description']",
                 ".event-description",
-                ".aciklama-detay"
+                ".aciklama-detay",
             ]
             for selector in fallback_selectors:
                 el = await page.query_selector(selector)
@@ -1145,9 +1304,9 @@ class BiletinialSpider(BaseEventSpider):
                     text = await el.inner_text()
                     if text and len(text.strip()) > 20:
                         return text.strip()
-            
+
             return None
-            
+
         except Exception as e:
             self.logger.warning(f"Error extracting description: {e}")
             return None
@@ -1171,27 +1330,31 @@ class BiletinialSpider(BaseEventSpider):
         try:
             # 0. Check for "Kadro" tab and click if needed (for tabbed layouts like Concerts)
             try:
-                 kadro_tab = page.locator(".goActors")
-                 if await kadro_tab.is_visible():
-                      self.logger.info(f"🖱️  Clicking 'Kadro' tab on {page.url} to reveal entities...")
-                      await kadro_tab.click()
-                      await asyncio.sleep(1) # Wait for UI update
+                kadro_tab = page.locator(".goActors")
+                if await kadro_tab.is_visible():
+                    self.logger.info(f"🖱️  Clicking 'Kadro' tab on {page.url} to reveal entities...")
+                    await kadro_tab.click()
+                    await asyncio.sleep(1)  # Wait for UI update
             except Exception:
-                 pass
+                pass
 
             # 1. Wait for ANY known container to be present
             try:
                 # Layout 1: .yds_cinema_movie_thread_info
                 # Layout 2: .yds_cinema_movie_thread_person_details_flex (Theater cast)
                 # Use state='attached' to detect even if hidden/not fully visible yet
-                await page.wait_for_selector('.yds_cinema_movie_thread_info, .yds_cinema_movie_thread_person_details_flex', timeout=5000, state='attached')
+                await page.wait_for_selector(
+                    ".yds_cinema_movie_thread_info, .yds_cinema_movie_thread_person_details_flex",
+                    timeout=5000,
+                    state="attached",
+                )
             except Exception:
                 # Don't return empty yet! Let the JS logic try its best.
                 self.logger.warning(f"⚠️ Primary entity container not found on {page.url}. Proceeding to JS fallback...")
 
-
             # 2. Execute extraction logic
-            js_result = await page.evaluate("""() => {
+            js_result = await page.evaluate(
+                """() => {
                 try {
                     const entities = [];
                     let debugText = "";
@@ -1255,7 +1418,7 @@ class BiletinialSpider(BaseEventSpider):
                                 
                                 // 2. Fallback: Check entire paragraph text (Symphony Layout: "Şef: <strong>Name</strong>")
                                 if (!role) {
-                                    let fullText = p.textContent.replace(/\u00A0/g, ' ').trim();
+                                    let fullText = p.textContent.replace(/\u00a0/g, ' ').trim();
                                     let fullKey = fullText.toLocaleUpperCase('tr-TR');
                                     for (const [k, r] of Object.entries(roleMap)) {
                                          // Check if keyword exists in text AND appears *before* the name (roughly)
@@ -1348,7 +1511,8 @@ class BiletinialSpider(BaseEventSpider):
                 return { result: [], debug: "JS ERROR: " + e.toString(), layout: "error" }; 
             }
         }
-        """)
+        """
+            )
 
             # Handle new return format (dict instead of list)
             entities = []
@@ -1356,16 +1520,18 @@ class BiletinialSpider(BaseEventSpider):
                 entities = js_result.get("result", [])
                 debug_info = js_result.get("debug", "")
                 found_layout = js_result.get("layout", "unknown")
-                
+
                 # Log specific debug info for problematic layouts
                 if "Şef" in debug_info or "Solist" in debug_info:
-                     self.logger.info(f"🔍 JS DEBUG INFO: {debug_info[:500]}...") # Log first 500 chars
+                    self.logger.info(f"🔍 JS DEBUG INFO: {debug_info[:500]}...")  # Log first 500 chars
 
                 if entities:
-                    self.logger.info(f"⚡ Fast-Path ({found_layout}): Extracted {len(entities)} entities. Sample: {entities[:2]}")
+                    self.logger.info(
+                        f"⚡ Fast-Path ({found_layout}): Extracted {len(entities)} entities. Sample: {entities[:2]}"
+                    )
                 else:
                     self.logger.warning(f"DEBUG_ENTITY_FAIL: Layout {found_layout} found but 0 entities.")
-                    self.logger.info(f"🔍 JS DEBUG INFO (FAIL): {debug_info[:1000]}...") # Log first 1000 chars on fail
+                    self.logger.info(f"🔍 JS DEBUG INFO (FAIL): {debug_info[:1000]}...")  # Log first 1000 chars on fail
 
                 self.logger.info(f"⚡ Fast-Path: Extracted {len(entities)} entities.")
 
@@ -1373,28 +1539,33 @@ class BiletinialSpider(BaseEventSpider):
             if not entities and debug_info:
                 # self.logger.info("DEBUG: Attempting Python Fallback (Regex)...")
                 try:
-                    import re # Ensure re is available (locally or globally)
-                    
+                    import re  # Ensure re is available (locally or globally)
+
                     # Pattern 1: "[Name] Tek Kişilik Stand Up" / "[Name] Stand Up"
                     # Matches "Furkan Bozdağ Tek Kişilik Stand Up"
-                    standup_match = re.search(r"([A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]+)+)\s+(?:Tek\s+Kişilik\s+Stand\s+Up|Stand\s+Up)", debug_info)
+                    standup_match = re.search(
+                        r"([A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]+)+)\s+(?:Tek\s+Kişilik\s+Stand\s+Up|Stand\s+Up)",
+                        debug_info,
+                    )
                     if standup_match:
-                         name = standup_match.group(1).strip()
-                         entities.append({'name': name, 'role': 'PERFORMED_BY', 'raw': 'Regex: Stand Up'})
-                         self.logger.info(f"✨ Fallback Extracted (Stand-up): {name}")
+                        name = standup_match.group(1).strip()
+                        entities.append({"name": name, "role": "PERFORMED_BY", "raw": "Regex: Stand Up"})
+                        self.logger.info(f"✨ Fallback Extracted (Stand-up): {name}")
 
                     # Pattern 2: "Sahne Alan: [Name]"
-                    sahne_match = re.search(r"Sahne\s+Alan\s*:\s*([A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]+)+)", debug_info)
+                    sahne_match = re.search(
+                        r"Sahne\s+Alan\s*:\s*([A-ZÇĞİÖŞÜ][a-zçğıöşü]+(?:\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]+)+)", debug_info
+                    )
                     if sahne_match:
-                         name = sahne_match.group(1).strip()
-                         entities.append({'name': name, 'role': 'PERFORMED_BY', 'raw': 'Regex: Sahne Alan'})
-                         self.logger.info(f"✨ Fallback Extracted (Sahne Alan): {name}")
+                        name = sahne_match.group(1).strip()
+                        entities.append({"name": name, "role": "PERFORMED_BY", "raw": "Regex: Sahne Alan"})
+                        self.logger.info(f"✨ Fallback Extracted (Sahne Alan): {name}")
 
                 except Exception as ex:
                     self.logger.warning(f"Fallback regex error: {ex}")
 
             return entities
-            
+
         except Exception as e:
             self.logger.warning(f"Error extracting entities logic: {e}")
             return []

@@ -148,13 +148,13 @@ class Node(ABC):
         """
         from src.database.connection import db_connection
         import asyncio
-        
+
         # We can implement this as an async wrapper essentially
         # But for now, let's just make a direct cypher query that is efficient
         try:
             query = f"MATCH (n:Event) RETURN n LIMIT {limit}"
             result = await asyncio.to_thread(db_connection.execute_query, query)
-            
+
             nodes = []
             if result.result_set:
                 for row in result.result_set:

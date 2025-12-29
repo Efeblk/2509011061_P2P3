@@ -55,14 +55,16 @@ class DuplicatesPipeline:
 
     def process_item(self, item, spider):
         """Check for duplicate events based on title + venue + date."""
-        title = item.get("title")
+        title = (item.get("title") or "").strip()
         # Normalize venue and date to empty string if None (match database storage)
-        venue = item.get("venue") or ""
-        date = item.get("date") or ""
+        venue = (item.get("venue") or "").strip()
+        date = (item.get("date") or "").strip()
         uuid = item.get("uuid")
 
-        # If UUID is present, this is an update job - skip duplicate check
-        if uuid:
+        logger.info(f"Checking duplicate: '{title}' @ '{venue}' on '{date}'")
+
+        # Only skip if explicitly marked as an update job (e.g. price updater)
+        if item.get("is_update_job"):
             logger.info(f"Update job detected for event: {title} ({uuid})")
             return item
 
@@ -275,19 +277,19 @@ class FalkorDBPipeline:
                 # Save extracted entities (Knowledge Graph)
                 if item.get("extracted_entities"):
                     logger.info(f"🕸️  Saving {len(item['extracted_entities'])} extracted entities for: {event.title}")
-                    
+
                     from src.models.person import PersonNode
-                    
+
                     for entity in item["extracted_entities"]:
                         name = entity.get("name")
                         role = entity.get("role")
-                        
+
                         if name and role:
                             # 1. Find or create Person (async safe via to_thread)
                             # Note: find_by_name uses db_connection which is thread-safe
                             try:
                                 # We need to run these DB operations in a thread because they use requests/socket
-                                
+
                                 # Define a helper for the thread
                                 def save_entity_logic(n, r, e_uuid):
                                     person = PersonNode.find_by_name(n)
@@ -298,7 +300,7 @@ class FalkorDBPipeline:
                                     return True
 
                                 await asyncio.to_thread(save_entity_logic, name, role, event.uuid)
-                                
+
                             except Exception as e:
                                 logger.warning(f"Failed to save entity {name} ({role}): {e}")
 

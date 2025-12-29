@@ -15,11 +15,8 @@ class BiletixSpider(BaseEventSpider):
     name = "biletix"
     allowed_domains = ["biletix.com"]
 
-    # Updated URL that works - Istanbul events for next 14 days
-    # Using the exact URL from the browser with hash fragment for proper JS filtering
-    start_urls = [
-        "https://www.biletix.com/search/TURKIYE/tr?category_sb=-1&date_sb=next14days&city_sb=%C4%B0stanbul#!city_sb:%C4%B0stanbul,date_sb:next14days"
-    ]
+    # Updated URL that works - All Turkey events for next 14 days
+    start_urls = ["https://www.biletix.com/search/TURKIYE/tr?category_sb=-1&date_sb=next14days"]
 
     custom_settings = {
         **BaseEventSpider.custom_settings,
