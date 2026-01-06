@@ -1,40 +1,40 @@
 # EventGraph 🎭
 
-**Student ID**: 2509011061  
-**Project**: P2 (Web Scraping) + P3 (Data Analysis & Visualization)
+**Istanbul Event Discovery Engine** — A full-stack data pipeline that scrapes, cleans, analyzes, and visualizes event data from real-world Turkish websites.
 
-AI-powered event discovery engine for Istanbul. Scrapes real-world messy web data, cleans it, analyzes it with statistical methods, and visualizes everything in a modern React dashboard.
-
-![React Dashboard](https://img.shields.io/badge/React-Dashboard-61DAFB?style=for-the-badge&logo=react)
-![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python)
-![FalkorDB](https://img.shields.io/badge/FalkorDB-Graph_DB-red?style=for-the-badge)
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)
+![FalkorDB](https://img.shields.io/badge/FalkorDB-Graph_DB-E10098?style=flat-square)
+![Scrapy](https://img.shields.io/badge/Scrapy-Playwright-60A839?style=flat-square)
 
 ---
 
-## 🎯 Bonus Points Summary
+## Overview
 
-| Category | Implementation | Points |
-|----------|----------------|--------|
-| **Visualization** | React.js + Recharts + Framer Motion | **+15** |
-| **Dataset** | Scraped messy web data from Biletinial | **+10** |
-| **Analysis** | Statistical analysis with scipy (ANOVA, normality tests, anomaly detection) | **+15** |
-| **TOTAL** | | **+40** |
+This project demonstrates a complete data engineering workflow:
+
+1. **Web Scraping** — Extract event data from dynamic JavaScript-rendered pages using Scrapy + Playwright
+2. **Data Cleaning** — Handle messy real-world data: Turkish dates, HTML entities, price formats, duplicates
+3. **Statistical Analysis** — Apply scipy-based analysis: quartiles, normality tests, anomaly detection
+4. **Visualization** — Present insights through an interactive React dashboard with real-time updates
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# 1. Create virtual environment
+# Clone and setup
+git clone https://github.com/Efeblk/2509011061_P2P3.git
+cd 2509011061_P2P3
 python3 -m venv venv && source venv/bin/activate
 
-# 2. Install & setup
+# Install dependencies and start database
 make setup
 
-# 3. Scrape events
+# Scrape events
 make scrape
 
-# 4. Launch web dashboard
+# Launch dashboard
 make web
 # → Dashboard: http://localhost:5173
 # → API: http://localhost:8000
@@ -42,165 +42,136 @@ make web
 
 ---
 
-## 📊 Visualization: React.js Dashboard (+15 points)
+## Features
 
-Modern web-based visualization with **React.js**, **Recharts**, and **Framer Motion**.
+### 🌐 Web Scraping Pipeline
+- **Source**: [Biletinial](https://www.biletinial.com) — Turkey's event ticketing platform
+- **Technology**: Scrapy framework with Playwright for JavaScript rendering
+- **Output**: ~11,000+ events with title, date, venue, price, category, and description
 
-### Features:
-- 📈 **Category Price Analysis** - Bar charts comparing mean vs median prices
-- 🥧 **Event Distribution** - Interactive pie chart with hover effects
-- 📉 **Data Quality Gauge** - Semi-circle gauge showing data completeness
-- 📊 **Statistical Report** - Live stats: mean, median, σ, skewness, kurtosis, IQR
-- 🧪 **Normality Test Results** - Kolmogorov-Smirnov test visualization
-- 🔍 **Anomaly Detection** - IQR/Z-score outlier summary
-- 🔄 **Live Progress Monitor** - Real-time scraping progress at `/progress`
+### 🧹 Data Cleaning
+Real-world web data is messy. This project handles:
 
-### Launch:
-```bash
-make web  # Starts both backend (FastAPI) and frontend (Vite + React)
-```
+| Challenge | Solution |
+|-----------|----------|
+| Turkish dates (`"20 Ocak 2025"`) | Custom parser → ISO 8601 format |
+| HTML entities (`&nbsp;`, `&#39;`) | `html.unescape()` + whitespace normalization |
+| Price formats (`"1.500,00 TL"`) | Regex extraction → float conversion |
+| Duplicates | Fingerprint-based deduplication |
+| Missing fields | Graceful handling with defaults |
 
-**Technologies**: React 18, Recharts, Framer Motion, Tailwind CSS, FastAPI
+### 📊 Statistical Analysis
+Powered by **scipy**, **numpy**, and **pandas**:
 
----
+- **Descriptive Statistics**: Mean, median, standard deviation, range
+- **Distribution Analysis**: Skewness, kurtosis, quartiles (Q1, Q2, Q3), IQR
+- **Normality Testing**: Kolmogorov-Smirnov test
+- **Anomaly Detection**: IQR method + Z-score method for outlier identification
+- **Time Series**: Weekly event trends, day-of-week patterns
+- **Segmentation**: Price clustering (Budget/Mid-Range/Premium/Luxury)
 
-## 📦 Dataset: Scraped Messy Web Data (+10 points)
+### 📈 React Dashboard
+Modern, responsive visualization built with:
 
-Data scraped from [Biletinial](https://www.biletinial.com) using **Scrapy + Playwright**.
+- **React 18** + **Vite** for fast development
+- **Recharts** for data visualization (area charts, bar charts, pie charts)
+- **Framer Motion** for smooth animations
+- **Tailwind CSS** for styling
+- **Real-time updates** via FastAPI backend
 
-### Raw Data Challenges:
-| Issue | Example |
-|-------|---------|
-| Turkish dates | `"20 Ocak 2025"`, `"Bugün"`, `"Yarın"` |
-| HTML entities | `&nbsp;`, `&#39;`, `&quot;` |
-| Price formats | `"1.500,00 TL"`, `"ÜCRETSİZ"`, null |
-| Duplicates | Same event with different IDs |
-| Missing fields | ~30% missing descriptions |
-
-### Data Cleaning Process:
-
-#### 1. Date Normalization
-```python
-# Turkish months → ISO 8601
-MONTH_MAP = {"ocak": 1, "şubat": 2, "mart": 3, ...}
-# "20 Ocak 2025" → "2025-01-20T00:00:00"
-```
-
-#### 2. Price Extraction
-```python
-# Handle Turkish format and free events
-"1.500,00 TL" → 1500.0
-"ÜCRETSİZ" → 0.0
-"150 - 250 TL" → 150.0 (minimum)
-```
-
-#### 3. Text Cleaning
-```python
-text = html.unescape(text)  # Remove entities
-text = ' '.join(text.split())  # Normalize whitespace
-```
-
-#### 4. Deduplication
-```python
-# Fingerprint: (title, date, venue)
-# Result: ~25,000 raw → ~18,000 unique events
-```
-
-#### 5. Category Normalization
-```python
-# 47 raw categories → 14 normalized categories
-"Konser", "Canlı Müzik" → "Concert"
-"Tiyatro", "Oyun" → "Theater"
-```
-
-**Files**: `src/scrapers/spiders/biletinial_spider.py`, `src/scrapers/pipelines.py`
+**Dashboard Features**:
+- Category-wise price analysis with bar charts
+- Event distribution pie chart
+- Data quality gauge
+- Live statistical report (μ, σ, skewness, kurtosis)
+- Anomaly detection summary
+- Time series trends
+- Live scraping progress monitor
 
 ---
 
-## 📈 Analysis: Advanced Statistical Analysis (+15 points)
-
-Comprehensive statistical analysis using **scipy**, **numpy**, and **pandas**.
-
-### Methods Implemented:
-
-| Method | Description | Result |
-|--------|-------------|--------|
-| **Descriptive Stats** | n, μ, M, σ, range | n=18,003, μ=981 TL, M=950 TL |
-| **Quartile Analysis** | Q1, Q2, Q3, IQR | Q1=400, Q3=1250, IQR=850 |
-| **Skewness** | Distribution asymmetry | γ₁ = 19.11 (right-skewed) |
-| **Kurtosis** | Tail heaviness | γ₂ = 563.04 (leptokurtic) |
-| **Normality Test** | Kolmogorov-Smirnov | p < 0.001 (non-normal) |
-| **Anomaly Detection** | IQR + Z-score methods | ~8% anomaly rate |
-
-### Run Analysis:
-```bash
-make analyze  # Prints statistical report to terminal
-make web      # Shows analysis in dashboard (live)
-```
-
-**Files**: `src/analysis/statistics.py`, `src/analysis/anomaly_detector.py`
-
----
-
-## 🧹 Data Cleaning Summary
-
-| Metric | Before | After |
-|--------|--------|-------|
-| Events scraped | ~25,000 | 18,003 unique |
-| Date format | Inconsistent Turkish | ISO 8601 |
-| HTML entities | 35% with entities | 0% |
-| Duplicates | ~7,000 | 0 |
-| Categories | 47 variations | 14 normalized |
-
----
-
-## 📁 Project Structure
+## Project Structure
 
 ```
-├── frontend/              # React.js dashboard
-│   ├── src/
-│   │   ├── App.jsx        # Main dashboard
-│   │   └── ProgressPage.jsx # Live progress monitor
+├── frontend/                 # React dashboard
+│   └── src/
+│       ├── App.jsx          # Main dashboard
+│       └── ProgressPage.jsx # Live progress
 ├── src/
-│   ├── scrapers/          # Scrapy spiders
-│   │   ├── spiders/       # biletinial_spider.py
-│   │   └── pipelines.py   # Data cleaning
-│   ├── analysis/          # Statistical analysis
-│   │   ├── statistics.py  # scipy analysis
+│   ├── scrapers/            # Scrapy spiders
+│   │   ├── spiders/         # biletinial_spider.py
+│   │   └── pipelines.py     # Data cleaning
+│   ├── analysis/            # Statistical analysis
+│   │   ├── statistics.py    # scipy-based analysis
 │   │   └── anomaly_detector.py
-│   ├── api/               # FastAPI backend
-│   │   └── main.py
-│   ├── ai/                # AI enrichment (Ollama)
-│   └── models/            # Graph DB models
-├── Makefile               # All commands
+│   ├── api/                 # FastAPI backend
+│   └── ai/                  # AI enrichment (Ollama)
+├── tests/                   # Unit tests
+├── Makefile                 # All commands
 └── README.md
 ```
 
 ---
 
-## 🔧 Commands
+## Commands
 
 | Command | Description |
 |---------|-------------|
-| `make setup` | Install dependencies + start DB |
+| `make setup` | Install dependencies + start database |
 | `make scrape` | Scrape events from Biletinial |
 | `make web` | Launch React dashboard |
-| `make analyze` | Run statistical analysis |
-| `make ai-enrich` | Generate AI summaries |
-| `make view` | View database stats |
+| `make analyze` | Run statistical analysis (terminal) |
+| `make ai-enrich` | Generate AI summaries with Ollama |
+| `make test` | Run unit tests |
 | `make fclean` | Full reset |
 
 ---
 
-## 🛠️ Tech Stack
+## Technology Stack
 
-- **Scraping**: Scrapy + Playwright
-- **Database**: FalkorDB (Redis-based graph DB)
-- **Backend**: FastAPI + Uvicorn
-- **Frontend**: React 18 + Vite + Recharts + Framer Motion
-- **Analysis**: scipy, numpy, pandas
-- **AI**: Ollama (Llama 3.2, mxbai-embed-large)
+| Layer | Technology |
+|-------|------------|
+| **Scraping** | Scrapy + Playwright |
+| **Database** | FalkorDB (Redis-based graph database) |
+| **Backend** | FastAPI + Uvicorn |
+| **Frontend** | React 18 + Vite + Recharts + Framer Motion |
+| **Analysis** | scipy, numpy, pandas |
+| **AI** | Ollama (Llama 3.2, mxbai-embed-large) |
 
 ---
 
-**Fall 2024**
+## Sample Analysis Output
+
+```
+Statistical Analysis Report
+═══════════════════════════════════════════════════════════
+
+Sample Size (n)     : 11,002
+Mean (μ)            : 700.45 TL
+Median (M)          : 549.00 TL
+Std Deviation (σ)   : 652.31 TL
+Skewness (γ₁)       : 19.11 (right-skewed)
+Kurtosis (γ₂)       : 563.04 (leptokurtic)
+
+Quartile Analysis
+─────────────────
+Q1 (25th percentile): 300.00 TL
+Q2 (50th percentile): 549.00 TL
+Q3 (75th percentile): 1,000.00 TL
+IQR                 : 700.00 TL
+
+Normality Test (Kolmogorov-Smirnov)
+───────────────────────────────────
+Result: Non-normal distribution (p < 0.001)
+
+Anomaly Detection
+─────────────────
+Total Anomalies: 847 (7.7%)
+Method: IQR + Z-score
+```
+
+---
+
+**Student ID**: 2509011061  
+**Course**: Web Data Mining (P2 + P3)  
+**Term**: Fall 2024
