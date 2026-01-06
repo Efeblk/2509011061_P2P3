@@ -30,11 +30,11 @@ async def main():
     # Get events to process
     if args.all:
         logger.info("Re-processing ALL events (regenerating summaries)")
-        events = await EventNode.get_all_events(limit=args.limit or 10000)
+        events = await EventNode.get_all_events(limit=args.limit)
     else:
         logger.info("Processing events without summaries")
-        # Default limit increased to cover full dataset (was 100)
-        events = await EventNode.get_all_events(limit=args.limit or 10000)
+        # No default limit - process all events unless specified
+        events = await EventNode.get_all_events(limit=args.limit)
 
     if not events:
         logger.warning("No events found to process")

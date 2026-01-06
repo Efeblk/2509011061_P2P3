@@ -1,6 +1,7 @@
 """Ollama AI client for local LLM inference."""
 
 import json
+import os
 import requests
 from typing import Optional, Any
 from loguru import logger
@@ -21,7 +22,8 @@ class OllamaClient:
 
         # Validate Ollama connection on startup
         try:
-            response = requests.get(f"{self.base_url}/api/tags", timeout=5)
+            health_timeout = int(os.getenv("OLLAMA_HEALTH_TIMEOUT", "5"))
+            response = requests.get(f"{self.base_url}/api/tags", timeout=health_timeout)
             response.raise_for_status()
             logger.debug(f"Successfully connected to Ollama at {self.base_url}")
         except requests.exceptions.ConnectionError:
@@ -49,7 +51,8 @@ class OllamaClient:
             url = f"{self.base_url}/api/embeddings"
             payload = {"model": settings.ollama.model_embedding, "prompt": text}
 
-            response = requests.post(url, json=payload, timeout=30)
+            embed_timeout = int(os.getenv("OLLAMA_EMBED_TIMEOUT", "30"))
+            response = requests.post(url, json=payload, timeout=embed_timeout)
             response.raise_for_status()
 
             data = response.json()
@@ -151,19 +154,21 @@ class OllamaClient:
 
         try:
             url = f"{self.base_url}/api/generate"
+            context_size = int(os.getenv("OLLAMA_CONTEXT_SIZE", "2048"))
             payload = {
                 "model": model or self.model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"temperature": temperature, "num_ctx": 2048},  # Reduced from 4096 for speed/memory
+                "options": {"temperature": temperature, "num_ctx": context_size},
             }
 
             if format == "json":
                 payload["format"] = "json"
 
             # Run blocking request in thread pool
+            generate_timeout = int(os.getenv("OLLAMA_GENERATE_TIMEOUT", "120"))
             def make_request():
-                return requests.post(url, json=payload, timeout=120)
+                return requests.post(url, json=payload, timeout=generate_timeout)
 
             response = await asyncio.to_thread(make_request)
             response.raise_for_status()

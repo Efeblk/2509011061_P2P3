@@ -55,8 +55,8 @@ class BiletinialSpider(BaseEventSpider):
     custom_settings = {
         **BaseEventSpider.custom_settings,
         "PLAYWRIGHT_PROCESS_REQUEST_HEADERS": None,
-        "DOWNLOAD_DELAY": 0,
-        "CONCURRENT_REQUESTS": 256,
+        # Note: CONCURRENT_REQUESTS and DOWNLOAD_DELAY are now controlled via .env
+        # See .env: SCRAPY_CONCURRENT_REQUESTS and SCRAPY_DOWNLOAD_DELAY
         "RETRY_TIMES": 2,
     }
 
@@ -145,34 +145,40 @@ class BiletinialSpider(BaseEventSpider):
         #     self.logger.info(f"No city selector found (page may already be city-specific): {e}")
 
         # Wait for event list to load (different selectors for different page types)
+        # LOGGING: Track which selector matched for debugging layout changes
         event_list_selector = None
         try:
             # Try city-specific page layout first
             await page.wait_for_selector("ul.sehir-detay__liste", timeout=5000)
             event_list_selector = "ul.sehir-detay__liste li"
-            self.logger.info("✓ Event list loaded (city-specific layout)")
+            self.logger.info("✓ Selector matched: 'ul.sehir-detay__liste' (city-specific layout)")
         except Exception:
             try:
                 # Try category page layout (music, theater) - kategori__etkinlikler
                 await page.wait_for_selector("#kategori__etkinlikler ul", timeout=5000)
                 event_list_selector = "#kategori__etkinlikler ul li"
-                self.logger.info("✓ Event list loaded (kategori__etkinlikler layout)")
+                self.logger.info("✓ Selector matched: '#kategori__etkinlikler' (category layout)")
             except Exception:
                 try:
                     # Try category page layout with resultsGrid (concerts, etc.)
                     await page.wait_for_selector(".resultsGrid", timeout=5000)
                     event_list_selector = ".resultsGrid > a"
-                    self.logger.info("✓ Event list loaded (resultsGrid layout)")
+                    self.logger.info("✓ Selector matched: '.resultsGrid' (grid layout)")
                 except Exception:
+                    self.logger.warning("⚠️ None of the expected selectors matched")
                     pass
 
         if not event_list_selector:
-            self.logger.warning("Simplified fallback: No events found")
+            self.logger.warning("❌ No event list selector found - page layout may have changed")
             await page.close()
             return
 
-        # Wait a bit for dynamic content
-        await asyncio.sleep(2)
+        # OPTIMIZATION: Wait for dynamic content with network idle instead of fixed delay
+        try:
+            await page.wait_for_load_state('networkidle', timeout=5000)
+        except:
+            # Fallback to short wait if networkidle not reached
+            await asyncio.sleep(1)
 
         # Click "Daha Fazla Yükle" (Load More) button multiple times
         max_clicks = 500
@@ -196,7 +202,14 @@ class BiletinialSpider(BaseEventSpider):
                 ).first
                 if await load_more_button.is_visible(timeout=2000):
                     await load_more_button.click()
-                    await asyncio.sleep(2)
+
+                    # OPTIMIZATION: Wait for network idle after click instead of fixed 2s delay
+                    try:
+                        await page.wait_for_load_state('networkidle', timeout=3000)
+                    except:
+                        # Fallback to shorter wait
+                        await asyncio.sleep(1)
+
                     clicks += 1
                 else:
                     self.logger.info("✓ No 'Load More' button found.")
@@ -695,10 +708,28 @@ class BiletinialSpider(BaseEventSpider):
                     try:
                         # Use search_scope to avoid getting other cities' dates
                         date_text = await search_scope.text_content(
-                            ".vizyon-tarihi, .release-date, .event-date, .ed-biletler__sehir__gun__tarih", timeout=2000
+                            ".vizyon-tarihi, .release-date, .event-date, .ed-biletler__sehir__gun__tarih, .etkinlik-tarih, .tarih", timeout=2000
                         )
                         if date_text:
                             event_date = date_text.strip()
+                    except Exception:
+                        pass
+
+                # Method 2.5: Look for <time datetime="..."> tags (semantic HTML)
+                if not event_date:
+                    try:
+                        time_el = await search_scope.query_selector("time[datetime]")
+                        if time_el:
+                            datetime_attr = await time_el.get_attribute("datetime")
+                            if datetime_attr:
+                                # datetime is often ISO format like 2025-12-15
+                                event_date = datetime_attr
+                                self.logger.info(f"✓ Extracted date from <time datetime>: {event_date}")
+                            else:
+                                # Fallback to text content
+                                event_date = await time_el.text_content()
+                                if event_date:
+                                    event_date = event_date.strip()
                     except Exception:
                         pass
 
@@ -743,8 +774,10 @@ class BiletinialSpider(BaseEventSpider):
                                     event_date = match.group(1).strip()
                                     break
 
-                    # If still not found, try without year
+                    # If still not found, try without year (use current year)
                     if not event_date:
+                        from datetime import datetime as dt
+                        current_year = dt.now().year
                         for month in turkish_months:
                             if month in all_text:
                                 # Pattern: "DD Month" without year
@@ -752,9 +785,12 @@ class BiletinialSpider(BaseEventSpider):
                                 match = re.search(pattern, all_text)
                                 if match:
                                     event_date = match.group(1).strip()
-                                    # Add year 2024 as default
-                                    event_date += " 2024"
+                                    event_date += f" {current_year}"
                                     break
+
+                # Log if date extraction failed after all methods
+                if not event_date:
+                    self.logger.warning(f"⚠️ All date extraction methods failed for: {response.meta.get('title')}")
 
             # Extract reviews from detail page
             self.logger.info("DEBUG: Starting Review Extraction")
@@ -821,7 +857,14 @@ class BiletinialSpider(BaseEventSpider):
                             # Extract Date
                             # <time datetime="..." class="ed-biletler__sehir__gun__tarih">
                             date_el = await row.query_selector(".ed-biletler__sehir__gun__tarih")
-                            row_date = await date_el.text_content() if date_el else None
+                            row_date_raw = await date_el.text_content() if date_el else None
+
+                            # Parse the date to add year and normalize format
+                            row_date = None
+                            if row_date_raw:
+                                parsed_dates = parse_turkish_date_range(row_date_raw.strip())
+                                # Use first date if range was parsed
+                                row_date = parsed_dates[0] if parsed_dates and parsed_dates[0] != row_date_raw.strip() else row_date_raw.strip()
 
                             # Extract Venue
                             # <a itemprop="location" title="Venue Name">

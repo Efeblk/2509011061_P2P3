@@ -3,48 +3,58 @@ Unit tests for date parsing utilities.
 """
 
 import pytest
+from unittest.mock import patch
+from datetime import datetime
 from src.utils.date_parser import parse_turkish_date_range, normalize_date_format
 
 
 class TestParseTurkishDateRange:
     """Test Turkish date range parsing."""
 
-    def test_single_date(self):
+    @patch('src.utils.date_parser.datetime')
+    def test_single_date(self, mock_datetime):
         """Test parsing a single date."""
+        mock_datetime.now.return_value = datetime(2026, 1, 7)
         result = parse_turkish_date_range("Aralık - 15")
-        assert result == ["Aralık 15"]
+        assert result == ["2026 Aralık 15"]
 
-    def test_date_range_single_month(self):
+    @patch('src.utils.date_parser.datetime')
+    def test_date_range_single_month(self, mock_datetime):
         """Test parsing a date range within one month."""
+        mock_datetime.now.return_value = datetime(2026, 1, 7)
         result = parse_turkish_date_range("Aralık - 10 - 16")
-        expected = ["Aralık 10", "Aralık 11", "Aralık 12", "Aralık 13", "Aralık 14", "Aralık 15", "Aralık 16"]
+        expected = ["2026 Aralık 10", "2026 Aralık 11", "2026 Aralık 12", "2026 Aralık 13", "2026 Aralık 14", "2026 Aralık 15", "2026 Aralık 16"]
         assert result == expected
 
-    def test_date_range_multiple_months(self):
+    @patch('src.utils.date_parser.datetime')
+    def test_date_range_multiple_months(self, mock_datetime):
         """Test parsing date ranges across multiple months."""
+        mock_datetime.now.return_value = datetime(2026, 1, 7)
         result = parse_turkish_date_range("Aralık - 10 - 16 Ocak  - 02 - 08")
         expected = [
-            "Aralık 10",
-            "Aralık 11",
-            "Aralık 12",
-            "Aralık 13",
-            "Aralık 14",
-            "Aralık 15",
-            "Aralık 16",
-            "Ocak 02",
-            "Ocak 03",
-            "Ocak 04",
-            "Ocak 05",
-            "Ocak 06",
-            "Ocak 07",
-            "Ocak 08",
+            "2026 Aralık 10",
+            "2026 Aralık 11",
+            "2026 Aralık 12",
+            "2026 Aralık 13",
+            "2026 Aralık 14",
+            "2026 Aralık 15",
+            "2026 Aralık 16",
+            "2026 Ocak 02",
+            "2026 Ocak 03",
+            "2026 Ocak 04",
+            "2026 Ocak 05",
+            "2026 Ocak 06",
+            "2026 Ocak 07",
+            "2026 Ocak 08",
         ]
         assert result == expected
 
-    def test_date_range_with_leading_zeros(self):
+    @patch('src.utils.date_parser.datetime')
+    def test_date_range_with_leading_zeros(self, mock_datetime):
         """Test parsing dates with leading zeros."""
+        mock_datetime.now.return_value = datetime(2026, 1, 7)
         result = parse_turkish_date_range("Ocak - 01 - 05")
-        expected = ["Ocak 01", "Ocak 02", "Ocak 03", "Ocak 04", "Ocak 05"]
+        expected = ["2026 Ocak 01", "2026 Ocak 02", "2026 Ocak 03", "2026 Ocak 04", "2026 Ocak 05"]
         assert result == expected
 
     def test_empty_string(self):
@@ -63,8 +73,10 @@ class TestParseTurkishDateRange:
         result = parse_turkish_date_range(invalid)
         assert result == [invalid]
 
-    def test_all_turkish_months(self):
+    @patch('src.utils.date_parser.datetime')
+    def test_all_turkish_months(self, mock_datetime):
         """Test parsing works for all Turkish months."""
+        mock_datetime.now.return_value = datetime(2026, 1, 7)
         months = [
             "Ocak",
             "Şubat",
@@ -82,30 +94,34 @@ class TestParseTurkishDateRange:
 
         for month in months:
             result = parse_turkish_date_range(f"{month} - 15")
-            assert result == [f"{month} 15"]
+            assert result == [f"2026 {month} 15"]
 
-    def test_date_range_january(self):
+    @patch('src.utils.date_parser.datetime')
+    def test_date_range_january(self, mock_datetime):
         """Test parsing January date range."""
+        mock_datetime.now.return_value = datetime(2026, 1, 7)
         result = parse_turkish_date_range("Ocak - 28 - 31")
-        expected = ["Ocak 28", "Ocak 29", "Ocak 30", "Ocak 31"]
+        expected = ["2026 Ocak 28", "2026 Ocak 29", "2026 Ocak 30", "2026 Ocak 31"]
         assert result == expected
 
-    def test_multiple_ranges(self):
+    @patch('src.utils.date_parser.datetime')
+    def test_multiple_ranges(self, mock_datetime):
         """Test parsing multiple separate date ranges."""
+        mock_datetime.now.return_value = datetime(2026, 1, 7)
         result = parse_turkish_date_range("Mart - 05 - 10 Nisan - 15 - 20")
         expected = [
-            "Mart 05",
-            "Mart 06",
-            "Mart 07",
-            "Mart 08",
-            "Mart 09",
-            "Mart 10",
-            "Nisan 15",
-            "Nisan 16",
-            "Nisan 17",
-            "Nisan 18",
-            "Nisan 19",
-            "Nisan 20",
+            "2026 Mart 05",
+            "2026 Mart 06",
+            "2026 Mart 07",
+            "2026 Mart 08",
+            "2026 Mart 09",
+            "2026 Mart 10",
+            "2026 Nisan 15",
+            "2026 Nisan 16",
+            "2026 Nisan 17",
+            "2026 Nisan 18",
+            "2026 Nisan 19",
+            "2026 Nisan 20",
         ]
         assert result == expected
 

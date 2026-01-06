@@ -1,197 +1,206 @@
-# EventGraph 🎯
+# EventGraph 🎭
 
-Your AI-powered event discovery engine for Istanbul.
-Finds the best events from Biletix and Biletinial, filters out the noise using LLMs, and curates collections like "Date Night" or "Best Value".
+**Student ID**: 2509011061  
+**Project**: P2 (Web Scraping) + P3 (Data Analysis & Visualization)
 
-## ✨ Features
+AI-powered event discovery engine for Istanbul. Scrapes real-world messy web data, cleans it, analyzes it with statistical methods, and visualizes everything in a modern React dashboard.
 
-- **Multi-Source Scraping**: Unified data from Biletix & Biletinial.
-- **AI Filtering**: Uses fast models (Gemini Flash / Llama 3.2) to categorize intent.
-- **Reasoning Engine**: Uses smart models (Gemini Pro) to rank events and generate summaries.
-- **Graph Database**: Powered by FalkorDB for relationship mapping (Event -> Venue -> Category).
-- **Natural Language Search**: Ask "Where should I go for a cheap date?" and get curated answers.
-
-> [!WARNING]
-> **Service Status Notice**: 
-> - **Biletix**: Currently **disabled** due to poor data context quality.
-> - **Google Gemini**: Currently **disabled** due to high operational costs.
-> *These services may be restored in future updates.*
+![React Dashboard](https://img.shields.io/badge/React-Dashboard-61DAFB?style=for-the-badge&logo=react)
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python)
+![FalkorDB](https://img.shields.io/badge/FalkorDB-Graph_DB-red?style=for-the-badge)
 
 ---
 
-## 🛠️ Prerequisites
+## 🎯 Bonus Points Summary
 
-- **Python 3.11+**
-- **Docker** (for the database)
-- **Ollama** (Required for local inference)
-- *(Optional)* **Google Gemini API Key** (for cloud reasoning)
+| Category | Implementation | Points |
+|----------|----------------|--------|
+| **Visualization** | React.js + Recharts + Framer Motion | **+15** |
+| **Dataset** | Scraped messy web data from Biletinial | **+10** |
+| **Analysis** | Statistical analysis with scipy (ANOVA, normality tests, anomaly detection) | **+15** |
+| **TOTAL** | | **+40** |
 
 ---
 
-## 📦 Installation
+## 🚀 Quick Start
 
-### 1. Create Virtual Environment
-Isolate dependencies to keep your system clean.
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-```
+# 1. Create virtual environment
+python3 -m venv venv && source venv/bin/activate
 
-### 2. Install Dependencies & Database
-Use the `make` shortcut to handle everything.
-```bash
+# 2. Install & setup
 make setup
-```
-*This installs python packages, Playwright browsers, and starts the FalkorDB container.*
 
-### 3. Configure AI (Default: Local Privacy)
-The project is configured to use **Ollama** by default for 100% local, private processing.
-
-1.  **Install & Serve Ollama**:
-    ```bash
-    # Install from ollama.com, then run:
-    ollama serve
-    ```
-
-2.  **Pull Required Models**:
-    ```bash
-    ollama pull llama3.2
-    ollama pull mxbai-embed-large
-    ollama pull mistral-nemo
-    ```
-
-3.  **Check `.env`**:
-    Ensure `AI_LOCAL=ollama` is set (this is the default).
-
-*(Optional)* To use Google Gemini instead:
-1.  Get an API Key from [Google AI Studio](https://makersuite.google.com/app/apikey).
-2.  Set `GEMINI_API_KEY=your_key` and `AI_LOCAL=gemini` in `.env`.
-
-**Hardware Recommendations for Local AI (Ollama):**
-- **Minimum**: 4GB RAM, 2 CPU cores → Set `AI_CONCURRENCY=2`
-- **Recommended**: 8GB RAM, 4 CPU cores → Set `AI_CONCURRENCY=4`
-- **Optimal**: 16GB+ RAM, 8+ CPU cores → Set `AI_CONCURRENCY=8`
-
-*Higher concurrency = faster processing but more memory usage.*
-
-### 4. Configure Scraping
-Adjust scraping performance in the `.env` file.
-
-```env
-# .env
-SCRAPY_CONCURRENT_REQUESTS=16  # Number of concurrent HTTP requests
-SCRAPY_DOWNLOAD_DELAY=1        # Delay between requests (in seconds)
-PLAYWRIGHT_HEADLESS=true       # Run browser in headless mode
-```
-
-**Scraping Performance Recommendations:**
-- **Conservative**: `SCRAPY_CONCURRENT_REQUESTS=8`, `SCRAPY_DOWNLOAD_DELAY=2` → Slower but gentler on servers
-- **Balanced**: `SCRAPY_CONCURRENT_REQUESTS=16`, `SCRAPY_DOWNLOAD_DELAY=1` → Good balance of speed and stability
-- **Aggressive**: `SCRAPY_CONCURRENT_REQUESTS=32`, `SCRAPY_DOWNLOAD_DELAY=0.5` → Fastest but may trigger rate limits
-
-*Higher concurrent requests = faster scraping but more network/CPU usage and higher chance of being blocked.*
-
----
-
-## 🚀 Usage Workflow
-
-### 1. Scrape Events 🕷️
-Fetch the latest data from web sources.
-```bash
+# 3. Scrape events
 make scrape
+
+# 4. Launch web dashboard
+make web
+# → Dashboard: http://localhost:5173
+# → API: http://localhost:8000
 ```
-*Tip: This runs both Biletix and Biletinial scrapers.*
-
-### 2. Enrich Events with AI 🧠
-Generate intelligent summaries for all events using AI.
-```bash
-make ai-enrich
-```
-*This analyzes event descriptions, Biletinial AI summaries, and top 5 user reviews to generate:*
-- Quality scores (0-10)
-- Importance level (must-see, iconic, popular, niche)
-- Sentiment analysis
-- Key highlights and concerns
-- Best audience fit
-
-**What gets analyzed:**
-- Event description (up to 1000 chars)
-- Biletinial's AI summary (if available)
-- Top 5 user reviews (up to 500 chars each)
-
-**Performance:**
-- With Ollama (llama3.2): ~2-3 events/second (depends on hardware)
-- With Gemini API: ~5-10 events/second (depends on rate limits)
-
-### 3. Run AI Collections 🏆
-Curate special collections using AI tournaments.
-```bash
-make ai-collections
-```
-*This runs the "Tournament" system where AI picks the best events for different categories like "Date Night" or "Best Value".*
-
-### 4. Ask for Recommendations 💬
-Launch the CLI to interact with your data.
-```bash
-make ask
-```
-*Example queries:*
-> "Find me a jazz concert this weekend."
-> "I want a cheap stand-up show on the Asian side."
 
 ---
 
-## 🔧 Advanced Commands
+## 📊 Visualization: React.js Dashboard (+15 points)
 
-| Command | Description |
-|---------|-------------|
-| `make view` | View stats about scraped events in the database |
-| `make verify` | Run data quality checks (missing prices, dates, etc.) |
-| `make ai-enrich` | Generate AI summaries for events without summaries |
-| `make ai-enrich LIMIT=100` | Process only first 100 events (for testing) |
-| `make ai-enrich FORCE=--force` | Process even low-quality events (no description/reviews) |
-| `make ai-enrich-all` | Regenerate ALL summaries (overwrites existing) |
-| `make ai-view` | View quality audit of AI-generated summaries |
-| `make clean-ai` | Delete all AI summaries from database |
-| `make clean-data` | Wipe database contents (keeps table structure) |
-| `make fclean` | **Hard Reset**: Deletes venv, DB volumes, and logs |
+Modern web-based visualization with **React.js**, **Recharts**, and **Framer Motion**.
 
-## 🧠 AI Enrichment Details
+### Features:
+- 📈 **Category Price Analysis** - Bar charts comparing mean vs median prices
+- 🥧 **Event Distribution** - Interactive pie chart with hover effects
+- 📉 **Data Quality Gauge** - Semi-circle gauge showing data completeness
+- 📊 **Statistical Report** - Live stats: mean, median, σ, skewness, kurtosis, IQR
+- 🧪 **Normality Test Results** - Kolmogorov-Smirnov test visualization
+- 🔍 **Anomaly Detection** - IQR/Z-score outlier summary
+- 🔄 **Live Progress Monitor** - Real-time scraping progress at `/progress`
 
-### Summary Generation Process
+### Launch:
+```bash
+make web  # Starts both backend (FastAPI) and frontend (Vite + React)
+```
 
-Each event is analyzed using:
-1. **Event Description** (up to 1000 characters)
-2. **Biletinial AI Summary** (professional curated description)
-3. **Top 5 User Reviews** (up to 500 characters each)
+**Technologies**: React 18, Recharts, Framer Motion, Tailwind CSS, FastAPI
 
-The AI generates:
-- **Quality Score**: 0-10 rating based on content quality
-- **Importance Level**: must-see, iconic, popular, niche, seasonal, emerging
-- **Value Rating**: excellent, good, fair, expensive
-- **Sentiment Summary**: One-sentence review sentiment
-- **Key Highlights**: Array of 3 main positives
-- **Concerns**: Potential issues or criticisms
-- **Best For**: Target audience types
-- **Vibe**: 2-3 words describing atmosphere
-- **Uniqueness**: What makes this event special
-- **Flags**: Educational value, tourist attraction, bucket list worthy
+---
 
+## 📦 Dataset: Scraped Messy Web Data (+10 points)
 
-**Performance Tips:**
-- Lower `AI_CONCURRENCY` if you get memory errors
-- Increase `AI_CONCURRENCY` if CPU usage is low (<50%)
-- Use `LIMIT=100` to test settings before full run
-- Monitor system resources: `htop` or `top`
+Data scraped from [Biletinial](https://www.biletinial.com) using **Scrapy + Playwright**.
 
-## 📚 Documentation
-- [**Scraped Websites**](docs/scraped_websites.md): Details on supported sources and categories.
+### Raw Data Challenges:
+| Issue | Example |
+|-------|---------|
+| Turkish dates | `"20 Ocak 2025"`, `"Bugün"`, `"Yarın"` |
+| HTML entities | `&nbsp;`, `&#39;`, `&quot;` |
+| Price formats | `"1.500,00 TL"`, `"ÜCRETSİZ"`, null |
+| Duplicates | Same event with different IDs |
+| Missing fields | ~30% missing descriptions |
+
+### Data Cleaning Process:
+
+#### 1. Date Normalization
+```python
+# Turkish months → ISO 8601
+MONTH_MAP = {"ocak": 1, "şubat": 2, "mart": 3, ...}
+# "20 Ocak 2025" → "2025-01-20T00:00:00"
+```
+
+#### 2. Price Extraction
+```python
+# Handle Turkish format and free events
+"1.500,00 TL" → 1500.0
+"ÜCRETSİZ" → 0.0
+"150 - 250 TL" → 150.0 (minimum)
+```
+
+#### 3. Text Cleaning
+```python
+text = html.unescape(text)  # Remove entities
+text = ' '.join(text.split())  # Normalize whitespace
+```
+
+#### 4. Deduplication
+```python
+# Fingerprint: (title, date, venue)
+# Result: ~25,000 raw → ~18,000 unique events
+```
+
+#### 5. Category Normalization
+```python
+# 47 raw categories → 14 normalized categories
+"Konser", "Canlı Müzik" → "Concert"
+"Tiyatro", "Oyun" → "Theater"
+```
+
+**Files**: `src/scrapers/spiders/biletinial_spider.py`, `src/scrapers/pipelines.py`
+
+---
+
+## 📈 Analysis: Advanced Statistical Analysis (+15 points)
+
+Comprehensive statistical analysis using **scipy**, **numpy**, and **pandas**.
+
+### Methods Implemented:
+
+| Method | Description | Result |
+|--------|-------------|--------|
+| **Descriptive Stats** | n, μ, M, σ, range | n=18,003, μ=981 TL, M=950 TL |
+| **Quartile Analysis** | Q1, Q2, Q3, IQR | Q1=400, Q3=1250, IQR=850 |
+| **Skewness** | Distribution asymmetry | γ₁ = 19.11 (right-skewed) |
+| **Kurtosis** | Tail heaviness | γ₂ = 563.04 (leptokurtic) |
+| **Normality Test** | Kolmogorov-Smirnov | p < 0.001 (non-normal) |
+| **Anomaly Detection** | IQR + Z-score methods | ~8% anomaly rate |
+
+### Run Analysis:
+```bash
+make analyze  # Prints statistical report to terminal
+make web      # Shows analysis in dashboard (live)
+```
+
+**Files**: `src/analysis/statistics.py`, `src/analysis/anomaly_detector.py`
+
+---
+
+## 🧹 Data Cleaning Summary
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Events scraped | ~25,000 | 18,003 unique |
+| Date format | Inconsistent Turkish | ISO 8601 |
+| HTML entities | 35% with entities | 0% |
+| Duplicates | ~7,000 | 0 |
+| Categories | 47 variations | 14 normalized |
+
+---
 
 ## 📁 Project Structure
 
-- `src/scrapers/`: Spiders for Biletix/Biletinial (Scrapy)
-- `src/ai/`: Clients for Gemini and Ollama
-- `src/models/`: Data classes for Graph Nodes (Event, Venue)
-- `src/scripts/`: Utilities for running tournaments and enrichment
-- `docs/`: Documentation and guides
-- `ask.py`: The CLI entry point
+```
+├── frontend/              # React.js dashboard
+│   ├── src/
+│   │   ├── App.jsx        # Main dashboard
+│   │   └── ProgressPage.jsx # Live progress monitor
+├── src/
+│   ├── scrapers/          # Scrapy spiders
+│   │   ├── spiders/       # biletinial_spider.py
+│   │   └── pipelines.py   # Data cleaning
+│   ├── analysis/          # Statistical analysis
+│   │   ├── statistics.py  # scipy analysis
+│   │   └── anomaly_detector.py
+│   ├── api/               # FastAPI backend
+│   │   └── main.py
+│   ├── ai/                # AI enrichment (Ollama)
+│   └── models/            # Graph DB models
+├── Makefile               # All commands
+└── README.md
+```
+
+---
+
+## 🔧 Commands
+
+| Command | Description |
+|---------|-------------|
+| `make setup` | Install dependencies + start DB |
+| `make scrape` | Scrape events from Biletinial |
+| `make web` | Launch React dashboard |
+| `make analyze` | Run statistical analysis |
+| `make ai-enrich` | Generate AI summaries |
+| `make view` | View database stats |
+| `make fclean` | Full reset |
+
+---
+
+## 🛠️ Tech Stack
+
+- **Scraping**: Scrapy + Playwright
+- **Database**: FalkorDB (Redis-based graph DB)
+- **Backend**: FastAPI + Uvicorn
+- **Frontend**: React 18 + Vite + Recharts + Framer Motion
+- **Analysis**: scipy, numpy, pandas
+- **AI**: Ollama (Llama 3.2, mxbai-embed-large)
+
+---
+
+**Fall 2024**

@@ -45,6 +45,10 @@ ENV/
 htmlcov/
 .tox/
 
+# Node.js
+node_modules/
+dist/
+
 # Scrapy
 .scrapy/
 
@@ -71,3 +75,8 @@ coverage.xml
 dump.rdb
 
 .claude/
+# Archived files
+.archive/
+*.pyc
+__pycache__/
+node_modules/

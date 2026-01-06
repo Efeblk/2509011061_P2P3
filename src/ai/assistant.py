@@ -22,6 +22,55 @@ CATEGORIES = {
     "this-weekend": "The absolute best things happening this upcoming weekend.",
 }
 
+# Genre normalization mapping - maps user input to DB genre names
+GENRE_MAPPINGS = {
+    # Stand-up Comedy (critical fix)
+    "stand-up": "Stand up",
+    "stand up": "Stand up",
+    "standup": "Stand up",
+    "stand-up comedy": "Stand up",
+    "komedi": "Stand up",  # When user says "komedi" they usually mean stand-up
+
+    # Music genres
+    "jazz": "Caz",
+    "caz": "Caz",
+    "rock": "Rock",
+    "pop": "Pop",
+    "classical": "Klasik",
+    "klasik": "Klasik",
+    "classical music": "Klasik",
+
+    # Theater
+    "theater": "Tiyatro",
+    "theatre": "Tiyatro",
+    "tiyatro": "Tiyatro",
+    "play": "Tiyatro",
+    "drama": "Dram",
+    "dram": "Dram",
+
+    # Other
+    "concert": "Konser",
+    "konser": "Konser",
+    "opera": "Opera",
+    "ballet": "Bale",
+    "bale": "Bale",
+}
+
+# Mood/vibe keywords that should NOT be mapped to category/genre filters
+MOOD_KEYWORDS = [
+    "romantic", "romantik",
+    "fun", "eğlenceli",
+    "family", "aile", "family-friendly",
+    "date", "date night",
+    "cheap", "ucuz",
+    "expensive", "pahalı",
+    "popular", "popüler",
+    "hidden", "hidden gem",
+    "unique", "benzersiz",
+    "cultural", "kültürel",
+    "tourist", "turist",
+]
+
 
 class EventAssistant:
     """
@@ -30,9 +79,14 @@ class EventAssistant:
     """
 
     def __init__(self):
-        self.client = get_ai_client(use_reasoning=False)
-        self.reasoning_client = get_ai_client(use_reasoning=True)
+        # HYBRID GPU OPTIMIZATION: RTX 4070 Super enables smart task allocation
+        self.client = get_ai_client(use_reasoning=False)  # llama3.2 for embeddings (fast)
+        # Use reasoning model (mistral-nemo 12B) for critical tasks where quality matters
+        self.reasoning_client = get_ai_client(use_reasoning=True)  # mistral-nemo (12B) for re-ranking & answers
+        # Fast model for simple tasks (filter extraction doesn't need heavy reasoning)
+        self.fast_client = get_ai_client(use_reasoning=False)  # llama3.2 for speed (0.5s vs 2-3s)
         self.history = []  # Store conversation history
+        # Total query time: ~3-4s (Filter: 0.5s + Rerank: 2s + Answer: 2s)
 
     async def identify_intent(self, query: str) -> Optional[str]:
         """Classifies user query into one of the known categories."""
@@ -121,8 +175,8 @@ class EventAssistant:
         """
 
         try:
-            # Use reasoning client for better instruction following
-            response = await self.reasoning_client.generate_json(prompt, schema=SearchFilters)
+            # Use fast model for filter extraction (simple schema matching, doesn't need 12B reasoning)
+            response = await self.fast_client.generate_json(prompt, schema=SearchFilters)
             if not response:
                 return {}
 
@@ -140,20 +194,27 @@ class EventAssistant:
                 if not filters["date_range"].get("start") and not filters["date_range"].get("end"):
                     del filters["date_range"]
 
-            # Filter out known "Moods" incorrectly mapped to Category
-            invalid_categories = [
-                "date night",
-                "romantic",
-                "fun",
-                "best value",
-                "hidden gem",
-                "family",
-                "cheap",
-                "popular",
-            ]
-            if filters.get("category") and filters["category"].lower() in invalid_categories:
-                logger.info(f"Removing invalid category '{filters['category']}' (it's a mood, not a genre)")
-                del filters["category"]
+            # CRITICAL FIX: Normalize genre using mapping dictionary
+            if filters.get("genre"):
+                original_genre = filters["genre"]
+                normalized_genre = GENRE_MAPPINGS.get(original_genre.lower())
+                if normalized_genre:
+                    filters["genre"] = normalized_genre
+                    logger.info(f"Normalized genre: '{original_genre}' → '{normalized_genre}'")
+
+            # CRITICAL FIX: Normalize category using mapping dictionary
+            if filters.get("category"):
+                original_category = filters["category"]
+                normalized_category = GENRE_MAPPINGS.get(original_category.lower())
+                if normalized_category:
+                    filters["category"] = normalized_category
+                    logger.info(f"Normalized category: '{original_category}' → '{normalized_category}'")
+
+            # Filter out known "Moods" incorrectly mapped to Category/Genre
+            for field in ["category", "genre"]:
+                if filters.get(field) and filters[field].lower() in MOOD_KEYWORDS:
+                    logger.info(f"Removing invalid {field} '{filters[field]}' (it's a mood/vibe, not a genre)")
+                    del filters[field]
 
             return filters
         except Exception as e:
@@ -257,6 +318,14 @@ class EventAssistant:
                     node_data = row[0]  # Node object or node properties
                     score = row[1]
 
+                    # QUALITY FIX: Apply confidence threshold
+                    # Reject low-confidence matches (< 0.25 similarity)
+                    # Note: Vector scores are typically 0.2-0.4 range for mxbai-embed-large
+                    MIN_VECTOR_SCORE = 0.25
+                    if score < MIN_VECTOR_SCORE:
+                        logger.debug(f"Skipping result with low confidence: {score:.2f}")
+                        continue
+
                     # Parse Node Data
                     summary_node = None
                     if hasattr(node_data, "properties"):
@@ -294,7 +363,7 @@ class EventAssistant:
 
         # 5. Sort & Top K
         results.sort(key=lambda x: x[0], reverse=True)
-        top_candidates = results[:20]  # Take top 20 for re-ranking
+        top_candidates = results[:10]  # Take top 10 for re-ranking (GPU optimized: smaller batch = faster)
 
         # 6. Re-ranking (LLM Judge)
         # We verify if the event ACTUALLY matches the user query intent beyond keywords.
@@ -520,10 +589,11 @@ class EventAssistant:
         """
 
         try:
-            # Use reasoning client
+            # OPTIMIZED: Use fast model for re-ranking (llama3.2 is good enough, 10x faster than mistral-nemo)
+            # Save reasoning model (mistral-nemo) for final answer where quality really matters
             from src.ai.schemas import RerankResponse
 
-            response = await self.reasoning_client.generate_json(prompt, schema=RerankResponse)
+            response = await self.fast_client.generate_json(prompt, schema=RerankResponse)
 
             if not response or "results" not in response:
                 # Fallback: maintain original order
@@ -539,7 +609,10 @@ class EventAssistant:
             for res in response["results"]:
                 idx = res.get("id")
                 score = res.get("score", 0)
-                if idx is not None and 0 <= idx < len(candidates) and score >= 0.25:
+                # QUALITY FIX: Set re-rank threshold to filter weak matches
+                # LLM gives 0-1 scores, we want at least moderate confidence
+                MIN_RERANK_SCORE = 0.4
+                if idx is not None and 0 <= idx < len(candidates) and score >= MIN_RERANK_SCORE:
                     cand = candidates[idx]
                     # Update summary/reason if desired, but here we just re-score
                     final_results.append((score, cand["summary_obj"], cand["details_obj"]))

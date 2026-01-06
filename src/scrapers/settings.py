@@ -1,6 +1,10 @@
 """
 Scrapy settings for EventGraph project.
 """
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 BOT_NAME = "eventgraph"
 
@@ -10,11 +14,11 @@ NEWSPIDER_MODULE = "src.scrapers.spiders"
 # Obey robots.txt rules
 ROBOTSTXT_OBEY = False
 
-# Configure maximum concurrent requests
-CONCURRENT_REQUESTS = 256
+# Configure maximum concurrent requests (can be overridden via .env)
+CONCURRENT_REQUESTS = int(os.getenv("SCRAPY_CONCURRENT_REQUESTS", "256"))
 
-# Configure a delay for requests for the same website
-DOWNLOAD_DELAY = 0
+# Configure a delay for requests for the same website (can be overridden via .env)
+DOWNLOAD_DELAY = float(os.getenv("SCRAPY_DOWNLOAD_DELAY", "0"))
 
 # Disable cookies (enabled by default)
 COOKIES_ENABLED = True
@@ -53,18 +57,18 @@ DOWNLOAD_HANDLERS = {
 
 PLAYWRIGHT_BROWSER_TYPE = "chromium"
 PLAYWRIGHT_LAUNCH_OPTIONS = {
-    "headless": True,
-    "timeout": 60000,
+    "headless": os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() == "true",
+    "timeout": int(os.getenv("PLAYWRIGHT_TIMEOUT", "60000")),
     "args": ["--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"],  # Optimizations
 }
 
-# Increase thread pool for high concurrency
-REACTOR_THREADPOOL_MAXSIZE = 256
+# Increase thread pool for high concurrency (matches CONCURRENT_REQUESTS)
+REACTOR_THREADPOOL_MAXSIZE = int(os.getenv("SCRAPY_CONCURRENT_REQUESTS", "256"))
 
 # Set settings whose default value is deprecated to a future-proof value
 REQUEST_FINGERPRINTER_IMPLEMENTATION = "2.7"
 TWISTED_REACTOR = "twisted.internet.asyncioreactor.AsyncioSelectorReactor"
 FEED_EXPORT_ENCODING = "utf-8"
 
-# Logging
-LOG_LEVEL = "INFO"
+# Logging (can be overridden via .env)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

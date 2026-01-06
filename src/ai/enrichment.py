@@ -19,12 +19,26 @@ def get_ai_client(use_reasoning: bool = False):
     return ollama_client
 
 
+# VALID CATEGORIES for event classification
+VALID_CATEGORIES = [
+    "Concert",
+    "Theater",
+    "Cinema",
+    "Stand-up",
+    "Festival",
+    "Kids",
+    "Workshop",
+    "Sports",
+    "Opera/Ballet",
+    "Other",
+]
+
 SUMMARY_PROMPT_TEMPLATE = """
 Analyze this event and create a compact, intelligent summary.
 
 EVENT DETAILS:
 Title: {title}
-Category: {category}
+Category (from scraper): {category}
 Genre: {genre}
 Duration: {duration}
 Description: {description}
@@ -38,6 +52,7 @@ Rating: {rating}/5 ({review_count} reviews)
 
 Create a JSON summary (be concise and honest):
 {{
+    "refined_category": "Concert" | "Theater" | "Cinema" | "Stand-up" | "Festival" | "Kids" | "Workshop" | "Sports" | "Opera/Ballet" | "Other",
     "quality_score": 0-10,
     "importance": "must-see" | "iconic" | "popular" | "niche" | "seasonal" | "emerging",
     "value_rating": "excellent" | "good" | "fair" | "expensive",
@@ -51,6 +66,20 @@ Create a JSON summary (be concise and honest):
     "tourist_attraction": true/false,
     "bucket_list_worthy": true/false
 }}
+
+CATEGORY CLASSIFICATION GUIDE:
+- "Concert": Music performances, gigs, orchestras, symphonies, solo artists.
+- "Theater": Plays, dramas, musicals, stage performances.
+- "Cinema": Movie screenings, film festivals, premieres.
+- "Stand-up": Comedy shows, one-person shows.
+- "Festival": Multi-day events, multi-artist gatherings.
+- "Kids": Children's shows, family-friendly events.
+- "Workshop": Educational sessions, seminars, masterclasses.
+- "Sports": Sporting events, matches, tournaments.
+- "Opera/Ballet": Opera, ballet, classical dance performances.
+- "Other": Anything that doesn't fit the above categories.
+
+The scraper may have given a generic category like "Etkinlik" or "Müzik". Your job is to provide a more SPECIFIC refined_category from the list above based on the event title and description.
 
 Consider:
 - Is this a cultural classic everyone should see? (Don Quixote, Nutcracker)
@@ -188,6 +217,15 @@ async def generate_summary(event: EventNode, force: bool = False) -> Optional[AI
             # Ideally yes, but let's treat LLM failure as a soft fail for now unless we have embedding.
             if not embedding_json:
                 return None
+
+        # --- Category Refinement ---
+        # If the LLM returned a refined_category, update the event's category
+        refined_category = summary_data.get("refined_category")
+        if refined_category and refined_category in VALID_CATEGORIES:
+            if event.category != refined_category:
+                logger.info(f"✨ Refining category for '{event.title}': '{event.category}' -> '{refined_category}'")
+                event.category = refined_category
+                event.save()  # Persist the change to the database
 
     # If we skipped LLM and have no embedding, then we really have nothing.
     if skipped_llm and not embedding_json:

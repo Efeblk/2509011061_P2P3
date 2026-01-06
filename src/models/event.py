@@ -184,22 +184,54 @@ class EventNode(Node):
             return []
 
     @staticmethod
-    async def get_all_events(limit: int = 100) -> List["EventNode"]:
+    async def get_all_events(limit: int = None) -> List["EventNode"]:
         """Get all events with optional limit."""
         from src.database.connection import db_connection
 
         try:
-            query = f"MATCH (e:Event) RETURN e LIMIT {limit}"
-            result = db_connection.execute_query(query)
+            if limit is not None:
+                # User specified a limit, respect it
+                query = f"MATCH (e:Event) RETURN e LIMIT {limit}"
+                result = db_connection.execute_query(query)
 
-            events = []
-            if result.result_set:
-                for row in result.result_set:
-                    node_data = row[0].properties
-                    events.append(EventNode.from_dict(node_data))
+                events = []
+                if result.result_set:
+                    for row in result.result_set:
+                        node_data = row[0].properties
+                        events.append(EventNode.from_dict(node_data))
 
-            logger.info(f"Retrieved {len(events)} events from database")
-            return events
+                logger.info(f"Retrieved {len(events)} events from database")
+                return events
+            else:
+                # No limit specified - fetch ALL events in batches
+                # FalkorDB returns max 10,000 results per query, so we need pagination
+                batch_size = 10000
+                skip = 0
+                all_events = []
+
+                while True:
+                    query = f"MATCH (e:Event) RETURN e SKIP {skip} LIMIT {batch_size}"
+                    result = db_connection.execute_query(query)
+
+                    if not result.result_set:
+                        break
+
+                    batch_events = []
+                    for row in result.result_set:
+                        node_data = row[0].properties
+                        batch_events.append(EventNode.from_dict(node_data))
+
+                    all_events.extend(batch_events)
+                    logger.info(f"Retrieved batch: {len(batch_events)} events (total so far: {len(all_events)})")
+
+                    # If we got fewer results than batch_size, we've reached the end
+                    if len(batch_events) < batch_size:
+                        break
+
+                    skip += batch_size
+
+                logger.info(f"Retrieved {len(all_events)} total events from database")
+                return all_events
 
         except Exception as e:
             logger.error(f"Failed to get all events: {e}")

@@ -33,6 +33,10 @@ help:
 	@echo "  make ai-collections  - Run AI tournaments"
 	@echo "  make ai-view         - Audit AI quality"
 	@echo ""
+	@echo "📊 Analysis & Visualization:"
+	@echo "  make analyze   - Run statistical analysis and generate report"
+	@echo "  make gui       - Launch desktop GUI dashboard (Tkinter)"
+	@echo ""
 	@echo "📦 Setup:"
 	@echo "  make install   - Install dependencies"
 	@echo "  make setup     - Full first-time setup"
@@ -234,13 +238,17 @@ clean-collections:
 	@echo "🧹 Removing Collections..."
 	@export PYTHONPATH=. && venv/bin/python src/scripts/clean_collections.py
 
-# Default limit covers all events
-LIMIT ?= 10000
-FORCE ?= 
+# No default limit - process all events unless specified
+LIMIT ?=
+FORCE ?=
 
 ai-enrich:
-	@echo "🤖 Generating AI summaries (Limit: $(LIMIT))..."
-	@export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py --limit $(LIMIT) $(FORCE)
+	@echo "🤖 Generating AI summaries..."
+	@if [ -n "$(LIMIT)" ]; then \
+		export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py --limit $(LIMIT) $(FORCE); \
+	else \
+		export PYTHONPATH=. && venv/bin/python src/scripts/enrich_events.py $(FORCE); \
+	fi
 	@make venue-enrich
 
 venue-enrich:
@@ -272,3 +280,30 @@ ai-collections:
 verify:
 	@echo "🔎 Verifying data integrity..."
 	@venv/bin/python src/scripts/verify_data.py
+
+analyze:
+	@echo "📊 Running advanced statistical analysis..."
+	@export PYTHONPATH=. && venv/bin/python src/scripts/run_analysis.py
+
+analyze-json:
+	@echo "📊 Running advanced statistical analysis (JSON output)..."
+	@export PYTHONPATH=. && venv/bin/python src/scripts/run_analysis.py --output-format json --output-file STATISTICAL_ANALYSIS_REPORT.json
+
+gui:
+	@echo "🖥️ Launching desktop GUI dashboard..."
+	@echo "Note: Requires python3-tk (install with: sudo apt-get install python3-tk)"
+	@export PYTHONPATH=. && venv/bin/python src/gui/dashboard.py
+
+web:
+	@echo "🌐 Launching React + FastAPI Web Dashboard..."
+	@echo "Backend: http://127.0.0.1:8000"
+	@echo "Frontend: http://localhost:5173"
+	@trap 'kill -TERM 0' EXIT; \
+	(export PYTHONPATH=. && venv/bin/uvicorn src.api.main:app --reload --port 8000) & \
+	(cd frontend && npm run dev) & \
+	wait
+
+api:
+	@echo "🚀 Starting FastAPI Backend..."
+	@export PYTHONPATH=. && venv/bin/uvicorn src.api.main:app --reload --port 8000
+
