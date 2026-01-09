@@ -26,14 +26,22 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install pytest pytest-asyncio pytest-cov aiohttp scrapy
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio pytest-cov aiohttp
 
     - name: Install Playwright browsers
       run: |
         playwright install chromium
         playwright install-deps
 
-    - name: Test with pytest
+    - name: Create .env file
       run: |
-        pytest tests/unit -v --cov=src
+        cp .env.example .env
+
+    - name: Test with pytest
+      env:
+        FALKORDB_HOST: localhost
+        FALKORDB_PORT: 6379
+        FALKORDB_GRAPH_NAME: eventgraph_test
+      run: |
+        pytest tests/unit -v --tb=short
