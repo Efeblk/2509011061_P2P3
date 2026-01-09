@@ -92,6 +92,100 @@ async def get_price_distribution():
         "raw": [float(x) for x in np.random.choice(p, size=min(len(p), 500), replace=False)] # Sample 500 for scatter
     }
 
+
+@app.get("/featured")
+async def get_featured_events():
+    """Get featured events: cheapest, medium, and premium with AI summaries."""
+    from src.database.connection import db_connection
+    
+    try:
+        # Get cheapest non-free events with AI summaries
+        cheapest_query = """
+        MATCH (e:Event)-[:HAS_AI_SUMMARY]->(s:AISummary)
+        WHERE e.price > 0
+        RETURN e.title, e.price, e.venue, e.category, e.date, s.summary, s.quality_score
+        ORDER BY e.price ASC
+        LIMIT 3
+        """
+        
+        # Get medium priced events (around median)
+        medium_query = """
+        MATCH (e:Event)-[:HAS_AI_SUMMARY]->(s:AISummary)
+        WHERE e.price >= 400 AND e.price <= 700
+        RETURN e.title, e.price, e.venue, e.category, e.date, s.summary, s.quality_score
+        ORDER BY s.quality_score DESC
+        LIMIT 3
+        """
+        
+        # Get premium/highest priced events
+        premium_query = """
+        MATCH (e:Event)-[:HAS_AI_SUMMARY]->(s:AISummary)
+        WHERE e.price > 0
+        RETURN e.title, e.price, e.venue, e.category, e.date, s.summary, s.quality_score
+        ORDER BY e.price DESC
+        LIMIT 3
+        """
+        
+        def format_event(row):
+            return {
+                "title": row[0] or "Unknown Event",
+                "price": row[1] or 0,
+                "venue": row[2] or "TBA",
+                "category": row[3] or "Etkinlik",
+                "date": row[4] or "",
+                "summary": row[5][:200] + "..." if row[5] and len(row[5]) > 200 else (row[5] or ""),
+                "quality_score": row[6] or 0
+            }
+        
+        cheapest_result = db_connection.execute_query(cheapest_query)
+        medium_result = db_connection.execute_query(medium_query)
+        premium_result = db_connection.execute_query(premium_query)
+        
+        return {
+            "cheapest": [format_event(row) for row in cheapest_result.result_set] if cheapest_result.result_set else [],
+            "medium": [format_event(row) for row in medium_result.result_set] if medium_result.result_set else [],
+            "premium": [format_event(row) for row in premium_result.result_set] if premium_result.result_set else [],
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e), "cheapest": [], "medium": [], "premium": []}
+
+
+@app.get("/scatter")
+async def get_scatter_data():
+    """Get price vs AI quality score data for scatter plot."""
+    from src.database.connection import db_connection
+    
+    try:
+        # Get events with AI summaries (sample for performance)
+        query = """
+        MATCH (e:Event)-[:HAS_AI_SUMMARY]->(s:AISummary)
+        WHERE e.price > 0 AND s.quality_score IS NOT NULL
+        RETURN e.price, s.quality_score, e.category
+        LIMIT 500
+        """
+        
+        result = db_connection.execute_query(query)
+        
+        if not result.result_set:
+            return []
+        
+        # Format for Recharts scatter
+        data = []
+        for row in result.result_set:
+            data.append({
+                "price": float(row[0]) if row[0] else 0,
+                "quality": int(row[1]) if row[1] else 0,
+                "category": row[2] or "Other"
+            })
+        
+        return data
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return []
+
 @app.get("/analysis/full")
 async def get_full_analysis():
     """Get comprehensive statistical analysis."""

@@ -20,24 +20,56 @@ This project demonstrates a complete data engineering workflow:
 
 ---
 
+## Prerequisites
+
+Before running the project, ensure you have:
+
+| Requirement | Version | Installation |
+|-------------|---------|--------------|
+| **Python** | 3.11+ | [python.org](https://python.org) |
+| **Node.js** | 18+ | [nodejs.org](https://nodejs.org) |
+| **Docker** | Latest | [docker.com](https://docker.com) |
+| **Ollama** (optional) | Latest | [ollama.ai](https://ollama.ai) |
+
+> **Note**: Ollama is only needed for AI enrichment (`make ai-enrich`). The dashboard works without it.
+
+---
+
 ## Quick Start
 
 ```bash
-# Clone and setup
+# 1. Clone the repository
 git clone https://github.com/Efeblk/2509011061_P2P3.git
 cd 2509011061_P2P3
-python3 -m venv venv && source venv/bin/activate
 
-# Install dependencies and start database
+# 2. Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate   # Windows
+
+# 3. Copy environment file
+cp .env.example .env
+
+# 4. Install dependencies and start database
 make setup
 
-# Scrape events
+# 5. Scrape events (takes ~5-10 minutes)
 make scrape
 
-# Launch dashboard
+# 6. Launch dashboard
 make web
 # → Dashboard: http://localhost:5173
 # → API: http://localhost:8000
+```
+
+### Optional: AI Enrichment
+```bash
+# Install Ollama models first
+ollama pull llama3.2
+ollama pull mxbai-embed-large
+
+# Run enrichment
+make ai-enrich
 ```
 
 ---

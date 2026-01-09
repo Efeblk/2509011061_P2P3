@@ -3,7 +3,8 @@ import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, Legend, ComposedChart
+  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, Legend, ComposedChart,
+  ScatterChart, Scatter, ZAxis
 } from 'recharts'
 import {
   TrendingUp, Users, Activity, PieChart as PieChartIcon,
@@ -39,19 +40,25 @@ function App() {
   const [categories, setCategories] = useState([])
   const [dataQuality, setDataQuality] = useState(null)
   const [advancedAnalysis, setAdvancedAnalysis] = useState(null)
+  const [featured, setFeatured] = useState(null)
+  const [scatterData, setScatterData] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [fullAnalysis, categoryData, advancedData] = await Promise.all([
+        const [fullAnalysis, categoryData, advancedData, featuredData, scatterResult] = await Promise.all([
           fetch(`${API_URL}/analysis/full`).then(res => res.json()),
           fetch(`${API_URL}/analysis/categories`).then(res => res.json()),
-          fetch(`${API_URL}/analysis/advanced`).then(res => res.json())
+          fetch(`${API_URL}/analysis/advanced`).then(res => res.json()),
+          fetch(`${API_URL}/featured`).then(res => res.json()),
+          fetch(`${API_URL}/scatter`).then(res => res.json())
         ])
         setAnalysis(fullAnalysis)
         setCategories(Array.isArray(categoryData) ? categoryData : [])
         setAdvancedAnalysis(advancedData)
+        setFeatured(featuredData)
+        setScatterData(Array.isArray(scatterResult) ? scatterResult : [])
 
         // Set data quality score from anomaly detection results
         if (fullAnalysis && fullAnalysis.anomalies) {
@@ -223,6 +230,120 @@ function App() {
               gradient="from-orange-500 to-red-500"
             />
           </motion.div>
+
+          {/* Featured Events Section */}
+          {featured && (
+            <motion.div
+              variants={cardVariants}
+              className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl overflow-hidden"
+            >
+              <div className="px-6 py-5 border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-teal-500/10">
+                <h3 className="font-semibold text-xl text-white flex items-center gap-2">
+                  🎪 Featured Events
+                </h3>
+                <p className="text-purple-300 text-sm mt-1">
+                  AI-enriched events across price ranges
+                </p>
+              </div>
+              <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Cheapest Events */}
+                <div className="space-y-4">
+                  <h4 className="text-lg font-semibold text-green-400 flex items-center gap-2">
+                    💚 Budget-Friendly
+                    <span className="text-xs text-purple-400 font-normal">Lowest prices</span>
+                  </h4>
+                  {featured.cheapest?.map((event, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.1 }}
+                      className="bg-gradient-to-br from-green-500/10 to-emerald-500/10 rounded-xl p-4 border border-green-500/20"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <h5 className="text-white font-medium text-sm leading-tight">{event.title}</h5>
+                        <span className="bg-green-500/20 text-green-400 text-xs px-2 py-1 rounded-full font-bold">
+                          {event.price} TL
+                        </span>
+                      </div>
+                      <p className="text-purple-300 text-xs mb-2">{event.venue} • {event.category}</p>
+                      {event.summary && (
+                        <p className="text-purple-400 text-xs italic">"{event.summary}"</p>
+                      )}
+                      <div className="flex items-center gap-1 mt-2">
+                        <span className="text-yellow-400 text-xs">AI Score:</span>
+                        <span className="text-white text-xs font-bold">{event.quality_score}/10</span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Medium Events */}
+                <div className="space-y-4">
+                  <h4 className="text-lg font-semibold text-blue-400 flex items-center gap-2">
+                    💙 Mid-Range
+                    <span className="text-xs text-purple-400 font-normal">Best value</span>
+                  </h4>
+                  {featured.medium?.map((event, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.1 + 0.3 }}
+                      className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-xl p-4 border border-blue-500/20"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <h5 className="text-white font-medium text-sm leading-tight">{event.title}</h5>
+                        <span className="bg-blue-500/20 text-blue-400 text-xs px-2 py-1 rounded-full font-bold">
+                          {event.price} TL
+                        </span>
+                      </div>
+                      <p className="text-purple-300 text-xs mb-2">{event.venue} • {event.category}</p>
+                      {event.summary && (
+                        <p className="text-purple-400 text-xs italic">"{event.summary}"</p>
+                      )}
+                      <div className="flex items-center gap-1 mt-2">
+                        <span className="text-yellow-400 text-xs">AI Score:</span>
+                        <span className="text-white text-xs font-bold">{event.quality_score}/10</span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+
+                {/* Premium Events */}
+                <div className="space-y-4">
+                  <h4 className="text-lg font-semibold text-pink-400 flex items-center gap-2">
+                    💎 Premium
+                    <span className="text-xs text-purple-400 font-normal">Luxury experiences</span>
+                  </h4>
+                  {featured.premium?.map((event, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.1 + 0.6 }}
+                      className="bg-gradient-to-br from-pink-500/10 to-purple-500/10 rounded-xl p-4 border border-pink-500/20"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <h5 className="text-white font-medium text-sm leading-tight">{event.title}</h5>
+                        <span className="bg-pink-500/20 text-pink-400 text-xs px-2 py-1 rounded-full font-bold">
+                          {event.price.toLocaleString()} TL
+                        </span>
+                      </div>
+                      <p className="text-purple-300 text-xs mb-2">{event.venue} • {event.category}</p>
+                      {event.summary && (
+                        <p className="text-purple-400 text-xs italic">"{event.summary}"</p>
+                      )}
+                      <div className="flex items-center gap-1 mt-2">
+                        <span className="text-yellow-400 text-xs">AI Score:</span>
+                        <span className="text-white text-xs font-bold">{event.quality_score}/10</span>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
 
           {/* Main Charts Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -584,6 +705,61 @@ function App() {
                     </ComposedChart>
                   </ResponsiveContainer>
                 </div>
+
+                {/* Scatter Plot: Price vs AI Quality */}
+                {scatterData.length > 0 && (
+                  <div className="bg-white/5 rounded-xl p-5">
+                    <h4 className="text-lg font-semibold text-white mb-2">🎯 Price vs AI Quality Score</h4>
+                    <p className="text-purple-400 text-xs mb-4">Each dot = 1 event. Higher = better AI summary quality. Price capped at 3000 TL.</p>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <ScatterChart margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                        <XAxis
+                          type="number"
+                          dataKey="price"
+                          name="Price"
+                          unit=" TL"
+                          stroke="#a78bfa"
+                          tick={{ fill: '#a78bfa', fontSize: 11 }}
+                          domain={[0, 3000]}
+                          tickCount={7}
+                        />
+                        <YAxis
+                          type="number"
+                          dataKey="quality"
+                          name="Quality"
+                          stroke="#a78bfa"
+                          tick={{ fill: '#a78bfa', fontSize: 11 }}
+                          domain={[0, 10]}
+                          tickCount={6}
+                        />
+                        <ZAxis range={[80, 80]} />
+                        <Tooltip
+                          cursor={{ strokeDasharray: '3 3' }}
+                          contentStyle={{ backgroundColor: 'rgba(15,15,35,0.95)', border: '1px solid rgba(167,139,250,0.3)', borderRadius: '12px' }}
+                          formatter={(value, name) => [name === 'Price' ? `${value} TL` : `${value}/10`, name]}
+                        />
+                        <Scatter
+                          name="Events"
+                          data={scatterData.filter(d => d.price <= 3000)}
+                          fillOpacity={0.6}
+                        >
+                          {scatterData.filter(d => d.price <= 3000).map((entry, index) => (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={entry.quality >= 8 ? '#43e97b' : entry.quality >= 6 ? '#4facfe' : '#f093fb'}
+                            />
+                          ))}
+                        </Scatter>
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                    <div className="flex justify-center gap-6 mt-3 text-xs text-purple-300">
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-400"></span> High (8-10)</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-400"></span> Medium (6-7)</span>
+                      <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-pink-400"></span> Lower (&lt;6)</span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Category Correlation Table */}
                 {advancedAnalysis.category_correlation && advancedAnalysis.category_correlation.length > 0 && (
